@@ -38,7 +38,7 @@ def print_targets():
 def get_target(name):
     target = _targets.get(name, None)
     if target is None:
-        print('Unknown target "%s".', file=sys.stderr)
+        print('Unknown target "%s".' % name, file=sys.stderr)
         print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
         sys.exit(1)
     return target
