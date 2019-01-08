@@ -311,8 +311,8 @@ class VhdList(object):
                         'Entity %s.%s defined in both %s and %s' %
                         (vhd.lib, ent, vhd.fname, entities[(vhd.lib, ent)].fname))
                 entities[(vhd.lib, ent)] = vhd
-            for pkg in vhd.entity_defs:
-                if (vhd.lib, ent) in packages:
+            for pkg in vhd.package_defs:
+                if (vhd.lib, pkg) in packages:
                     raise ResolutionError(
                         'Package %s.%s defined in both %s and %s' %
                         (vhd.lib, pkg, vhd.fname, packages[(vhd.lib, pkg)].fname))
@@ -361,7 +361,7 @@ class VhdList(object):
                         new_pending.add(anywhere)
             pending = new_pending
             counter += 1
-            if counter > len(entities) + len(packages):
+            if counter > len(entities) + len(packages) + 1:
                 raise ResolutionError('There appears to be a circular dependency somewhere...')
 
         # Store which files are not required by anything else and are thus
