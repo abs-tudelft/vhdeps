@@ -149,7 +149,7 @@ proc colorize {l c} {
 
 proc add_colored_unit_signals_to_group {group unit in_color out_color internal_color} {
   # add wave -noupdate -expand -group $group -divider -height 32 $group
-  add wave -noupdate -expand -group $group $unit
+  catch {add wave -noupdate -expand -group $group $unit}
 
   set input_list    [lsort [find signals -in        $unit]]
   set output_list   [lsort [find signals -out       $unit]]
@@ -191,14 +191,16 @@ proc simulate {lib top {duration -all}} {
 
   if [batch_mode] {
   } else {
-    add log -recursive *
+    catch {add log -recursive *}
     set lcname [string tolower $top]
+    set tcname sim:/${lcname}/*
     set tbname sim:/${lcname}/tb/*
     set uutname sim:/${lcname}/tb/uut/*
+    set tcsig [list "TC" $tcname]
     set tbsig [list "TB" $tbname]
     set uutsig [list "UUT" $uutname]
     configure wave -signalnamewidth 1
-    add_waves [list $tbsig $uutsig]
+    add_waves [list $tcsig $tbsig $uutsig]
     configure wave -namecolwidth    256
     configure wave -valuecolwidth   192
   }
@@ -258,16 +260,17 @@ proc regression {} {
       suppress_warnings
       onbreak resume
       run $duration
+      set status1 [runStatus -full]
       run -step
       onbreak ""
       close_all_sources
-      set status [runStatus -full]
-      if {$status eq "ready end"} {
-        lappend results [list $lib $top pass $duration]
-      } elseif {$status eq "ready step"} {
-        lappend results [list $lib $top timeout $duration]
+      set status2 [runStatus -full]
+      if {$status2 eq "ready end"} {
+        lappend results [list $lib $top PASSED $duration]
+      } elseif {$status1 eq "break simulation_stop"} {
+        lappend results [list $lib $top FAILED $duration]
       } else {
-        lappend results [list $lib $top fail $duration]
+        lappend results [list $lib $top TIMEOUT $duration]
       }
     }] {
       lappend results [list $lib $top fail $duration]
@@ -278,8 +281,8 @@ proc regression {} {
     set lib [lindex $tcresult 0]
     set top [lindex $tcresult 1]
     set result [lindex $tcresult 2]
-    if {$result eq "pass"} {
-      echo " - $lib.$top: $result"
+    if {$result eq "PASSED"} {
+      echo " - $result $lib.$top"
     }
   }
   set runs 0
@@ -292,9 +295,9 @@ proc regression {} {
     set result [lindex $tcresult 2]
     set duration [lindex $tcresult 3]
     incr runs
-    if {$result ne "pass"} {
+    if {$result ne "PASSED"} {
       incr fails
-      echo " - $lib.$top: $result"
+      echo " - $result $lib.$top"
       set last_failure [list $lib $top $duration]
     } else {
       incr passes
