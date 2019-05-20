@@ -26,7 +26,7 @@ def run(l, order, f):
     failed = False
     for vhd in order:
         # TODO vhd.lib, vhd.version!
-        rc, stdout, stderr = (ghdl["-a"]["-g"]["--std=08"][vhd.fname]).run(retcode=None)
+        rc, stdout, stderr = (ghdl["-a"]["-g"]["--std=08"]["--ieee=synopsys"][vhd.fname]).run(retcode=None)
         if rc != 0:
             failed = True
         f.write(stdout)
