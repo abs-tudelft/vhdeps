@@ -12,11 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Generic compile order output to stdout for simulation."""
+"""Generic compile order output to stdout."""
 
-def is_simulation():
-    return True
-
-def run(l, order, f):
-    for vhd in order:
-        f.write('%s %04d %s\n' % (vhd.lib, vhd.version, vhd.fname))
+def run(l, f):
+    for vhd in l.order:
+        f.write('%s %s %04d %s\n' % ('top' if vhd in l.top else 'dep', vhd.lib, vhd.version, vhd.fname))

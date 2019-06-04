@@ -22,9 +22,6 @@ exit status of vsim when running in batch mode."""
 
 import sys
 
-def is_simulation():
-    return True
-
 _header = """\
 # Copyright 2018 Delft University of Technology
 #
@@ -340,14 +337,14 @@ set compile_list [list]
 
 """
 
-def run(l, order, f):
+def run(l, f):
     f.write(_header)
     libs = set()
-    for vhd in order:
+    for vhd in l.order:
         libs.add(vhd.lib)
     for lib in libs:
         f.write('vlib %s\n' % lib)
-    for vhd in order:
+    for vhd in l.order:
         flags = '-quiet -work %s' % vhd.lib
         if vhd.version <= 1987:
             flags += ' -87'
