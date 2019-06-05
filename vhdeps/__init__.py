@@ -108,6 +108,12 @@ def run_cli():
         default=None,
         help='Output file. If not specified, stdout is used.')
 
+    # Debugging.
+    parser.add_argument(
+        '--stacktrace',
+        action='store_true',
+        help='Print complete Python stack traces instead of just the message.')
+
     # Help information.
     parser.add_argument(
         '--targets',
@@ -190,7 +196,14 @@ def run_cli():
         sys.exit(code)
 
     except Exception as e:
+        if args.stacktrace:
+            raise
         print('%s: %s' % (str(type(e).__name__), str(e)), file=sys.stderr)
+        sys.exit(-1)
+
+    except KeyboardInterrupt as e:
+        if args.stacktrace:
+            raise
         sys.exit(-1)
 
 if __name__ == '__main__':
