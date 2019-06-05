@@ -285,7 +285,7 @@ class VhdList(object):
         self.order.remove(vhd)
         self.order.appendleft(vhd)
         stack += (vhd,)
-        for vhd_dep in vhd.before:
+        for vhd_dep in sorted(vhd.before, key=str):
             self.move_to_front(vhd_dep, stack)
 
     def is_file_filtered_out(self, vhd):
