@@ -51,7 +51,11 @@ def run(l, f):
     f.write('Analyzing...\n')
     failed = False
     for vhd in l.order:
-        rc, stdout, stderr = (ghdl['-a']['-g']['--work=' + vhd.lib][std_switch]['--ieee=synopsys'][vhd.fname]).run(retcode=None)
+        rc, stdout, stderr = (ghdl
+                              ['-a']['-g']['--work=' + vhd.lib]
+                              [std_switch]['--ieee=synopsys']
+                              [vhd.fname]
+                              ).run(retcode=None)
         if rc != 0:
             failed = True
         f.write(stdout)
@@ -63,22 +67,32 @@ def run(l, f):
     for top in l.top:
         if top.unit.endswith('_tc'):
             f.write('Elaborating %s...\n' % top.unit)
-            rc, stdout, stderr = (ghdl['-e']['-g']['--work=' + top.lib][std_switch]['--ieee=synopsys'][top.unit]).run(retcode=None)
+            rc, stdout, stderr = (ghdl
+                                  ['-e']['-g']['--work=' + top.lib]
+                                  [std_switch]['--ieee=synopsys'][top.unit]
+                                  ).run(retcode=None)
             f.write(stdout)
             f.write(stderr)
             if rc != 0:
                 f.write('Elaboration for %s failed!\n' % top.unit)
             else:
                 f.write('Running %s...\n' % top.unit)
-                rc, stdout, stderr = (ghdl['-r']['-g']['--work=' + top.lib][std_switch]['--ieee=synopsys'][top.unit]).run(retcode=None)
+                rc, stdout, stderr = (ghdl
+                                      ['-r']['-g']['--work=' + top.lib]
+                                      [std_switch]['--ieee=synopsys'][top.unit]
+                                      ['--stop-time=' + top.get_timeout().replace(' ', '')]
+                                      ).run(retcode=None)
                 f.write(stdout)
                 f.write(stderr)
-                if rc != 0:
-                    summary.append(' * FAILED %s' % top.unit)
+                if 'simulation stopped by --stop-time' in stdout:
+                    summary.append((1, ' * TIMEOUT %s' % top.unit))
+                    failed = True
+                elif rc != 0:
+                    summary.append((2, ' * FAILED  %s' % top.unit))
                     failed = True
                 else:
-                    summary.append(' * PASSED %s' % top.unit)
-    f.write('\nFinal summary:\n' + '\n'.join(summary) + '\n')
+                    summary.append((0, ' * PASSED  %s' % top.unit))
+    f.write('\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
     if failed:
         f.write('Test suite FAILED\n')
         return 1
