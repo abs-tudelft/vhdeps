@@ -363,8 +363,8 @@ class VhdList(object):
             # out.
             if len(options) > 1:
                 raise ResolutionError(
-                    '%s %s.%s, (needed by %s.%s), is defined in multiple, ambiguous files: %s' %
-                    (unit_type, lib, name, self.lib, self.fname, ', '.join(options)))
+                    '%s %s.%s is defined in multiple, ambiguous files:\n - %s' %
+                    (unit_type, lib, name, '\n - '.join(map(str, options))))
 
             vhd = options[0]
 
