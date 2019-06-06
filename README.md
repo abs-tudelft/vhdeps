@@ -2,6 +2,8 @@
 vhdeps: a VHDL file dependency analyzer
 =======================================
 
+[![PyPi](https://badgen.net/pypi/v/vhdeps)](https://pypi.org/project/vhdeps/)
+
 `vhdeps` is a simple dependency analyzer for VHDL, to be used with tools that
 either awkwardly or downright *don't* support automatic compile order
 generation. It's quite simplistic in its VHDL parsing -- it just uses regular
@@ -19,13 +21,25 @@ terminate through event exhaustion upon success or through a
 `report ... severity failure` statement or a timeout upon failure. The timeout
 defaults to 1 ms, but can be overridden using a pragma statement.
 
+`vhdeps` allows VHDL files to be tagged with the VHDL versions they're
+compatible with or be marked as synthesis- or simulation-only using
+`.`-separated tags in the filename:
+
+ - Filenames matching `*.<version>.*`, where `<version>` is a two-digit VHDL
+   version code (93, 08, and so on), are compatible with the specified version.
+   Multiple version tags can be chained for files that are compatible with
+   multiple versions. If no version tag is present, the file is assumed to be
+   compatible with all versions.
+ - Filenames matching `*.syn.*` are synthesis-only.
+ - Filenames matching `*.sim.*` are simulation-only.
+
+By default, `vhdeps` ignores synthesis-only files and chooses a file compatible
+with VHDL-2008 if it has to choose between multiple implementations of the same
+design unit. This behavior can be configured on the command line.
+
 Finally, `vhdeps` can do some basic style checking if you like. The rules it
 can enforce for you are:
 
  - Each VHDL file must define exactly one entity or exactly one package.
  - VHDL package names must use the `_pkg` suffix.
  - The filename must match the name of the VHDL entity/package.
-
-The version and simulation/synthesis "modifiers" in the VHDL filenames are used
-by `vhdeps` to filter out files based on a maximum VHDL version and whether
-it's targeting simulation or synthesis.
