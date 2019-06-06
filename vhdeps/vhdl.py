@@ -89,8 +89,11 @@ class VhdFile(object):
 
         # Read and "parse" the file. "Parsing" is limited to stripping comments
         # and pattern matching to keep things simple.
-        with open(fname, 'r') as f:
-            contents = f.read().lower()
+        try:
+            with open(fname, 'r') as f:
+                contents = f.read().lower()
+        except Exception as e:
+            raise RuntimeError('failed to read VHDL file at %s: %s' % (self.fname, e))
         sim_timeout = [match.group(1) for match in self.TIMEOUT.finditer(contents)]
         contents = ' '.join((line.split('--')[0] for line in contents.split('\n')))
         self.entity_defs = {match.group(1) for match in self.ENTITY_DEF.finditer(contents)}
