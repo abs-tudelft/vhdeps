@@ -20,9 +20,12 @@ import sys
 def run(l, f):
     try:
         from plumbum import local, ProcessExecutionError, FG
-        from plumbum.cmd import ghdl
     except ImportError:
         raise ImportError('The GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+    try:
+        from plumbum.cmd import ghdl
+    except ImportError:
+        raise ImportError('The GHDL backend requires ghdl to be installed (https://github.com/ghdl/ghdl).')
 
     # Make sure all files in the compile order have the same version.
     versions = set()
