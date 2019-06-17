@@ -18,12 +18,40 @@ to be on the system path and that the Plumbum Python library is installed."""
 import sys
 import tempfile
 
-def run(l, f):
+def add_arguments(parser):
+    parser.add_argument(
+        '--ieee', nargs=1, metavar='ieee',
+        choices=['standard', 'synopsys', 'mentor', 'none'], default='synopsys',
+        help='Specifies which version of the IEEE library to use when compiling. '
+        'Options are standard, synopsys, mentor, and none; default is synopsys. '
+        'Note that GHDL itself defaults to standard; Synopsys\' implementation '
+        'seems to be a bit more lenient in practice, so it seems like the '
+        'better choice for a tool that should "just work".')
+
+    parser.add_argument(
+        '--no-debug', action='store_true',
+        help='Disables generation of debug symbols (adds -g0 switch to GHDL '
+        'if passed, instead of the default -g switch).')
+
+    parser.add_argument(
+        '--no-tempdir', action='store_true',
+        help='Disables cwd\'ing to a temporary working directory.')
+
+    parser.add_argument(
+        '--coverage', action='store_true',
+        help='EXPERIMENTAL: adds flags to GHDL for generating gcov-style code '
+        'coverage data. This only works when GHDL is compiled with the GCC '
+        'backend! Combine with --no-tempdir to prevent the output from being '
+        'deleted when vhdeps terminates.')
+
+def run(l, f, ieee, no_debug, no_tempdir, coverage):
     try:
         from plumbum import local, ProcessExecutionError, FG
         from plumbum.cmd import ghdl
     except ImportError:
         raise ImportError('The GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+
+    debug = '-g0' if no_debug else '-g'
 
     # Make sure all files in the compile order have the same version.
     versions = set()
@@ -49,58 +77,77 @@ def run(l, f):
     if std_switch is None:
         raise ValueError('GHDL supports only the following versions: ' + ', '.join(map(str, sorted(supported_versions))))
 
-    with tempfile.TemporaryDirectory() as tempdir:
-        with local.cwd(tempdir):
-            f.write('Analyzing...\n')
-            failed = False
-            for vhd in l.order:
-                rc, stdout, stderr = (ghdl
-                                    ['-a']['-g']['--work=' + vhd.lib]
-                                    [std_switch]['--ieee=synopsys']
-                                    [vhd.fname]
-                                    ).run(retcode=None)
-                if rc != 0:
-                    failed = True
+    def run_internal():
+        f.write('Analyzing...\n')
+        failed = False
+        for vhd in l.order:
+            cmd = ghdl[
+                '-a',
+                debug,
+                std_switch,
+                '--ieee=%s' % ieee,
+                '--work=%s' % vhd.lib]
+            if coverage:
+                cmd = cmd['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
+            cmd = cmd[vhd.fname]
+            rc, stdout, stderr = cmd.run(retcode=None)
+            if rc != 0:
+                failed = True
+            f.write(stdout)
+            f.write(stderr)
+        if failed:
+            f.write('Analysis failed!\n')
+            return 2
+        summary = []
+        for top in l.top:
+            if top.unit.endswith('_tc'):
+                f.write('Elaborating %s...\n' % top.unit)
+                cmd = ghdl[
+                    '-e',
+                    debug,
+                    std_switch,
+                    '--ieee=%s' % ieee,
+                    '--work=%s' % top.lib]
+                if coverage:
+                    cmd = cmd['-Wl,-lgcov']
+                cmd = cmd[top.unit]
+                rc, stdout, stderr = cmd.run(retcode=None)
                 f.write(stdout)
                 f.write(stderr)
-            if failed:
-                f.write('Analysis failed!\n')
-                return 2
-            summary = []
-            for top in l.top:
-                if top.unit.endswith('_tc'):
-                    f.write('Elaborating %s...\n' % top.unit)
-                    rc, stdout, stderr = (ghdl
-                                        ['-e']['-g']['--work=' + top.lib]
-                                        [std_switch]['--ieee=synopsys'][top.unit]
-                                        ).run(retcode=None)
+                if rc != 0:
+                    f.write('Elaboration for %s failed!\n' % top.unit)
+                else:
+                    f.write('Running %s...\n' % top.unit)
+                    cmd = ghdl[
+                        '-r',
+                        debug,
+                        std_switch,
+                        '--ieee=%s' % ieee,
+                        '--work=' + top.lib,
+                        top.unit,
+                        '--stop-time=' + top.get_timeout().replace(' ', '')]
+                    rc, stdout, stderr = cmd.run(retcode=None)
                     f.write(stdout)
                     f.write(stderr)
-                    if rc != 0:
-                        f.write('Elaboration for %s failed!\n' % top.unit)
+                    if 'simulation stopped by --stop-time' in stdout:
+                        summary.append((1, ' * TIMEOUT %s' % top.unit))
+                        failed = True
+                    elif rc != 0:
+                        summary.append((2, ' * FAILED  %s' % top.unit))
+                        failed = True
                     else:
-                        f.write('Running %s...\n' % top.unit)
-                        rc, stdout, stderr = (ghdl
-                                            ['-r']['-g']['--work=' + top.lib]
-                                            [std_switch]['--ieee=synopsys'][top.unit]
-                                            ['--stop-time=' + top.get_timeout().replace(' ', '')]
-                                            ).run(retcode=None)
-                        f.write(stdout)
-                        f.write(stderr)
-                        if 'simulation stopped by --stop-time' in stdout:
-                            summary.append((1, ' * TIMEOUT %s' % top.unit))
-                            failed = True
-                        elif rc != 0:
-                            summary.append((2, ' * FAILED  %s' % top.unit))
-                            failed = True
-                        else:
-                            summary.append((0, ' * PASSED  %s' % top.unit))
+                        summary.append((0, ' * PASSED  %s' % top.unit))
 
-    f.write('\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
-    if failed:
-        f.write('Test suite FAILED\n')
-        return 1
-    else:
-        f.write('Test suite PASSED\n')
-        return 0
+        f.write('\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
+        if failed:
+            f.write('Test suite FAILED\n')
+            return 1
+        else:
+            f.write('Test suite PASSED\n')
+            return 0
 
+    if no_tempdir:
+        return run_internal()
+    with tempfile.TemporaryDirectory() as tempdir:
+        with local.cwd(tempdir):
+            return run_internal()
