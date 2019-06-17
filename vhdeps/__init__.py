@@ -20,7 +20,7 @@ def run_cli():
     import argparse
 
     parser = argparse.ArgumentParser(
-        usage='%s [flags] <sim/synth target> [toplevel ...]' % sys.argv[0],
+        usage='%s [flags] <sim/synth target> [toplevel ...] [-- <target-args>]' % sys.argv[0],
         description='This script is a VHDL dependency analyzer. Given a list '
         'of VHDL files and/or directories containing VHDL files, it can '
         'generate a compile order and output this in various formats, such '
@@ -127,7 +127,13 @@ def run_cli():
         '--strict.')
 
     # Parse the command line.
-    args = parser.parse_args()
+    args = sys.argv
+    target_args = []
+    if '--' in args:
+        index = args.index('--')
+        target_args = args[index+1:]
+        args = args[:index]
+    args = parser.parse_args(args[1:])
 
     # Print additional information and exit if requested using --targets or
     # --style. --help also falls within this category, but argparse handles
@@ -149,6 +155,14 @@ def run_cli():
         parser.print_usage()
         sys.exit(1)
     target = get_target(args.target)
+
+    # Parse the target's arguments, if any.
+    target_parser = argparse.ArgumentParser(
+        prog='%s %s ... --' % (sys.argv[0], args.target),
+        description=target.__doc__)
+    if hasattr(target, 'add_arguments'):
+        target.add_arguments(target_parser)
+    target_args = target_parser.parse_args(target_args)
 
     # Construct the list of VHDL files.
     l = VhdList(
@@ -187,10 +201,10 @@ def run_cli():
 
         # Run the selected target with the selected output file or stdout.
         if args.outfile is None:
-            code = target.run(l, sys.stdout)
+            code = target.run(l, sys.stdout, **vars(target_args))
         else:
             with open(args.outfile, 'w') as f:
-                code = target.run(l, f)
+                code = target.run(l, f, **vars(target_args))
         if code is None:
             code = 0
         sys.exit(code)
