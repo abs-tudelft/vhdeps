@@ -17,10 +17,22 @@ to be on the system path and that the Plumbum Python library is installed."""
 
 import sys
 import tempfile
+import fnmatch
 
 def add_arguments(parser):
     parser.add_argument(
-        '--ieee', nargs=1, metavar='ieee',
+        '--pattern', metavar='pat', action='append',
+        help='Specifies a pattern used to filter which toplevel entities are '
+        'actually simulated. Patterns work glob-style and are applied in the '
+        'sequence in which they are specified, by default operating on entity '
+        'names. If a pattern starts with \'!\', entities matched previously '
+        'that also match this pattern are excluded. If a pattern starts with '
+        '\':\', the filename is matched instead. \':!\' combines the two. If '
+        'no patterns are specified, the matcher defaults to a single \'*_tc\' '
+        'pattern.')
+
+    parser.add_argument(
+        '--ieee', metavar='lib', action='store',
         choices=['standard', 'synopsys', 'mentor', 'none'], default='synopsys',
         help='Specifies which version of the IEEE library to use when compiling. '
         'Options are standard, synopsys, mentor, and none; default is synopsys. '
@@ -44,7 +56,7 @@ def add_arguments(parser):
         'backend! Combine with --no-tempdir to prevent the output from being '
         'deleted when vhdeps terminates.')
 
-def run(l, f, ieee, no_debug, no_tempdir, coverage):
+def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
     try:
         from plumbum import local, ProcessExecutionError, FG
         from plumbum.cmd import ghdl
@@ -52,6 +64,8 @@ def run(l, f, ieee, no_debug, no_tempdir, coverage):
         raise ImportError('The GHDL backend requires plumbum to be installed (pip3 install plumbum).')
 
     debug = '-g0' if no_debug else '-g'
+    if not pattern:
+        pattern = ['*_tc']
 
     # Make sure all files in the compile order have the same version.
     versions = set()
@@ -100,7 +114,19 @@ def run(l, f, ieee, no_debug, no_tempdir, coverage):
             return 2
         summary = []
         for top in l.top:
-            if top.unit.endswith('_tc'):
+            include = False
+            for pat in pattern:
+                target = top.unit
+                if pat.startswith(':'):
+                    target = top.fname
+                    pat = pat[1:]
+                invert = False
+                if pat.startswith('!'):
+                    invert = True
+                    pat = pat[1:]
+                if fnmatch.fnmatchcase(target, pat):
+                    include = not invert
+            if include:
                 f.write('Elaborating %s...\n' % top.unit)
                 cmd = ghdl[
                     '-e',

@@ -21,6 +21,7 @@ statement or simulator timeout in case of failure. This is reflected in the
 exit status of vsim when running in batch mode."""
 
 import sys
+import fnmatch
 
 _header = """\
 # Copyright 2018 Delft University of Technology
@@ -337,7 +338,21 @@ set compile_list [list]
 
 """
 
-def run(l, f):
+def add_arguments(parser):
+    parser.add_argument(
+        '--pattern', metavar='pat', action='append',
+        help='Specifies a pattern used to filter which toplevel entities are '
+        'actually simulated. Patterns work glob-style and are applied in the '
+        'sequence in which they are specified, by default operating on entity '
+        'names. If a pattern starts with \'!\', entities matched previously '
+        'that also match this pattern are excluded. If a pattern starts with '
+        '\':\', the filename is matched instead. \':!\' combines the two. If '
+        'no patterns are specified, the matcher defaults to a single \'*_tc\' '
+        'pattern.')
+
+def run(l, f, pattern):
+    if not pattern:
+        pattern = ['*_tc']
     f.write(_header)
     libs = set()
     for vhd in l.order:
@@ -358,7 +373,19 @@ def run(l, f):
             raise ValueError('VHDL version %d is not supported' % vhd.version)
         f.write('add_source {%s} {%s}\n' % (vhd.fname, flags))
     for top in l.top:
-        if top.unit.endswith('_tc'):
+        include = False
+        for pat in pattern:
+            target = top.unit
+            if pat.startswith(':'):
+                target = top.fname
+                pat = pat[1:]
+            invert = False
+            if pat.startswith('!'):
+                invert = True
+                pat = pat[1:]
+            if fnmatch.fnmatchcase(target, pat):
+                include = not invert
+        if include:
             f.write('lappend testcases [list %s %s "%s"]\n' % (top.lib, top.unit, top.get_timeout()))
     if len(l.top) == 1:
         top = l.top[0]
