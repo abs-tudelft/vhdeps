@@ -21,7 +21,7 @@ def add_arguments_for_get_test_cases(parser):
     """Adds the appropriate command line arguments for the `get_test_cases()`
     function to work to the given `argparse.ArgumentParser` object."""
     parser.add_argument(
-        '--pattern', metavar='pat', action='append',
+        '-p', '--pattern', metavar='pat', action='append',
         help='Specifies a pattern used to filter which toplevel entities are '
         'actually simulated. Patterns work glob-style and are applied in the '
         'sequence in which they are specified, by default operating on entity '
