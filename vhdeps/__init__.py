@@ -17,16 +17,17 @@
 Use `run_cli()` to run vhdeps as if it was run from the command line. For a
 more script-friendly interface, use the `vhdeps.vhdl' submodule directly."""
 
+import sys
+import os
+import argparse
+import vhdeps.vhdl as vhdl
+import vhdeps.target as targets
+
 def run_cli(args=None):
     """Runs the vhdeps CLI. The command-line arguments are taken from `args`
     when specified, or `sys.argv` by default. The return value is the exit code
     for the process. If the backtrace option is passed, exceptions will not be
     caught."""
-    import sys
-    import os
-    import argparse
-    import vhdeps.vhdl as vhdl
-    import vhdeps.target as targets
 
     parser = argparse.ArgumentParser(
         usage='vhdeps [flags] <sim/synth target> [toplevel ...] [--] [target-args]',
@@ -167,7 +168,7 @@ def run_cli(args=None):
         return 1
     target = targets.get_target(args.target)
     if target is None:
-        print('Unknown target "%s".' % name, file=sys.stderr)
+        print('Unknown target "%s".' % args.target, file=sys.stderr)
         print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
         return 1
 

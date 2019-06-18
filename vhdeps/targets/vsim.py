@@ -20,9 +20,8 @@ running out of events in case of success and with a "severity failure" report
 statement or simulator timeout in case of failure. This is reflected in the
 exit status of vsim when running in batch mode."""
 
-import sys
 import tempfile
-import fnmatch
+from .shared import add_arguments_for_get_test_cases, get_test_cases, run_cmd
 
 _HEADER = """\
 # Copyright 2018 Delft University of Technology
@@ -342,18 +341,7 @@ set compile_list [list]
 def add_arguments(parser):
     """Adds the command-line arguments supported by this target to the given
     `argparse.ArgumentParser` object."""
-    parser.add_argument(
-        '--pattern', metavar='pat', action='append',
-        help='Specifies a pattern used to filter which toplevel entities are '
-        'actually simulated. Patterns work glob-style and are applied in the '
-        'sequence in which they are specified, by default operating on entity '
-        'names. If a pattern starts with \'!\', entities matched previously '
-        'that also match this pattern are excluded. If a pattern starts with '
-        '\':\', the filename is matched instead. \':!\' combines the two. '
-        'Note that the patterns match the *entire* entity name/absolute '
-        'filename, so make sure to prefix/suffix an asterisk if you want a '
-        'partial match. If no patterns are specified, the matcher defaults to '
-        'a single \'*_tc\' pattern.')
+    add_arguments_for_get_test_cases(parser)
 
     parser.add_argument(
         '--tcl', action='store_true',
@@ -367,11 +355,9 @@ def add_arguments(parser):
         '--no-tempdir', action='store_true',
         help='Disables cwd\'ing to a temporary working directory.')
 
-def _write_tcl(vhd_list, tcl_file, pattern):
+def _write_tcl(vhd_list, tcl_file, **kwargs):
     """Writes the TCL file for the given VHDL list and testcase pattern to
     `outfile`."""
-    if not pattern:
-        pattern = ['*_tc']
     tcl_file.write(_HEADER)
     libs = set()
     for vhd in vhd_list.order:
@@ -391,42 +377,24 @@ def _write_tcl(vhd_list, tcl_file, pattern):
         else:
             raise ValueError('VHDL version %d is not supported' % vhd.version)
         tcl_file.write('add_source {%s} {%s}\n' % (vhd.fname, flags))
-    for top in vhd_list.top:
-        include = False
-        for pat in pattern:
-            target = top.unit
-            if pat.startswith(':'):
-                target = top.fname
-                pat = pat[1:]
-            invert = False
-            if pat.startswith('!'):
-                invert = True
-                pat = pat[1:]
-            if fnmatch.fnmatchcase(target, pat):
-                include = not invert
-        if include:
-            tcl_file.write('lappend testcases [list %s %s "%s"]\n' % (
-                top.lib, top.unit, top.get_timeout()))
-    if len(vhd_list.top) == 1:
-        top = vhd_list.top[0]
-        tcl_file.write('simulate %s %s "%s"\n' % (top.lib, top.unit, top.get_timeout()))
+
+    test_cases = get_test_cases(vhd_list, **kwargs)
+    for test_case in test_cases:
+        tcl_file.write('lappend testcases [list %s %s "%s"]\n' % (
+            test_case.lib, test_case.unit, test_case.get_timeout()))
+    if len(test_cases) == 1:
+        test_case = test_cases[0]
+        tcl_file.write('simulate %s %s "%s"\n' % (
+            test_case.lib, test_case.unit, test_case.get_timeout()))
     else:
         tcl_file.write('regression\n')
 
-def run(vhd_list, output_file, pattern, tcl, gui, no_tempdir):
-    """Runs this backend."""
+def _run(vhd_list, output_file, tcl=False, gui=False, **kwargs):
+    """Runs this backend in the current working directory."""
     if tcl:
-        if gui or no_tempdir:
-            print('Cannot combine --tcl with --gui or --no-tempdir!', file=sys.stderr)
-            return 2
-        _write_tcl(vhd_list, output_file, pattern)
+        _write_tcl(vhd_list, output_file, **kwargs)
         return 0
 
-    try:
-        from plumbum import local, TEE
-    except ImportError:
-        raise ImportError('the vsim backend requires plumbum to be installed to run vsim '
-                          '(pip3 install plumbum).')
     try:
         from plumbum.cmd import vsim
     except ImportError:
@@ -436,30 +404,30 @@ def run(vhd_list, output_file, pattern, tcl, gui, no_tempdir):
     except ImportError:
         raise ImportError('missing cat command.')
 
-    def run_cmd(cmd):
-        if output_file == sys.stdout:
-            exit_code, stdout, stderr = cmd & TEE
-        else:
-            exit_code, stdout, stderr = cmd.run(retcode=None)
-            output_file.write(stdout)
-            output_file.write(stderr)
-        return exit_code, stdout, stderr
+    # Write the TCL file to a temporary file.
+    with open('vsim.do', 'w') as tcl_file:
+        _write_tcl(vhd_list, tcl_file, **kwargs)
 
-    def run_internal():
-        with open('vsim.do', 'w') as tcl_file:
-            _write_tcl(vhd_list, tcl_file, pattern)
+    # Run vsim in the requested way.
+    if gui:
+        cmd = vsim['-do', 'vsim.do']
+    else:
+        cmd = cat['vsim.do'] | vsim
+    exit_code, *_ = run_cmd(output_file, cmd)
 
-        if gui:
-            cmd = vsim['-do', 'vsim.do']
-        else:
-            cmd = cat['vsim.do'] | vsim
+    # Forward vsim's exit code.
+    return exit_code
 
-        exit_code, *_ = run_cmd(cmd)
-
-        return exit_code
+def run(vhd_list, output_file, no_tempdir=False, **kwargs):
+    """Runs this backend."""
+    try:
+        from plumbum import local
+    except ImportError:
+        raise ImportError('the vsim backend requires plumbum to be installed '
+                          '(pip3 install plumbum).')
 
     if no_tempdir:
-        return run_internal()
+        return _run(vhd_list, output_file, **kwargs)
     with tempfile.TemporaryDirectory() as tempdir:
         with local.cwd(tempdir):
-            return run_internal()
+            return _run(vhd_list, output_file, **kwargs)

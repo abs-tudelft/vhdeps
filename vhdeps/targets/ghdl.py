@@ -15,25 +15,13 @@
 """Runs the given VHDL files as a vhlib test suite using GHDL. Requires GHDL
 to be on the system path and that the Plumbum Python library is installed."""
 
-import sys
 import tempfile
-import fnmatch
+from .shared import add_arguments_for_get_test_cases, get_test_cases, run_cmd
 
 def add_arguments(parser):
     """Adds the command-line arguments supported by this target to the given
     `argparse.ArgumentParser` object."""
-    parser.add_argument(
-        '--pattern', metavar='pat', action='append',
-        help='Specifies a pattern used to filter which toplevel entities are '
-        'actually simulated. Patterns work glob-style and are applied in the '
-        'sequence in which they are specified, by default operating on entity '
-        'names. If a pattern starts with \'!\', entities matched previously '
-        'that also match this pattern are excluded. If a pattern starts with '
-        '\':\', the filename is matched instead. \':!\' combines the two. '
-        'Note that the patterns match the *entire* entity name/absolute '
-        'filename, so make sure to prefix/suffix an asterisk if you want a '
-        'partial match. If no patterns are specified, the matcher defaults to '
-        'a single \'*_tc\' pattern.')
+    add_arguments_for_get_test_cases(parser)
 
     parser.add_argument(
         '--ieee', metavar='lib', action='store',
@@ -60,21 +48,15 @@ def add_arguments(parser):
         'backend! Combine with --no-tempdir to prevent the output from being '
         'deleted when vhdeps terminates.')
 
-def run(vhd_list, output_file, pattern, ieee, no_debug, no_tempdir, coverage):
-    """Runs this backend."""
-    try:
-        from plumbum import local, TEE
-    except ImportError:
-        raise ImportError(
-            'the GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=False, **_):
+    """Returns a three-tuple of the analyze, elaborate, and run commands for
+    GHDL in plumbum form."""
+
+    # Look for the base GHDL executable.
     try:
         from plumbum.cmd import ghdl
     except ImportError:
         raise ImportError('ghdl was not found.')
-
-    debug = '-g0' if no_debug else '-g'
-    if not pattern:
-        pattern = ['*_tc']
 
     # Make sure all files in the compile order have the same version.
     versions = set()
@@ -99,96 +81,103 @@ def run(vhd_list, output_file, pattern, ieee, no_debug, no_tempdir, coverage):
     }
     std_switch = supported_versions.get(version, None)
     if std_switch is None:
-        raise ValueError(
-            'GHDL supports only the following versions: '
-            + ', '.join(map(str, sorted(supported_versions))))
+        raise ValueError('GHDL supports only the following versions: '
+                         + ', '.join(map(str, sorted(supported_versions))))
 
-    def run_cmd(cmd):
-        if output_file == sys.stdout:
-            exit_code, stdout, stderr = cmd & TEE
-        else:
-            exit_code, stdout, stderr = cmd.run(retcode=None)
-            output_file.write(stdout)
-            output_file.write(stderr)
-        return exit_code, stdout, stderr
+    # Determine the debug switch.
+    debug = '-g0' if no_debug else '-g'
 
-    def run_internal():
-        output_file.write('Analyzing...\n')
-        failed = False
-        for vhd in vhd_list.order:
-            cmd = ghdl[
-                '-a',
-                debug,
-                std_switch,
-                '--ieee=%s' % ieee,
-                '--work=%s' % vhd.lib]
-            if coverage:
-                cmd = cmd['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
-            cmd = cmd[vhd.fname]
-            exit_code, *_ = run_cmd(cmd)
-            if exit_code != 0:
-                failed = True
-        if failed:
-            output_file.write('Analysis failed!\n')
-            return 2
-        summary = []
-        for top in vhd_list.top:
-            include = False
-            for pat in pattern:
-                target = top.unit
-                if pat.startswith(':'):
-                    target = top.fname
-                    pat = pat[1:]
-                invert = False
-                if pat.startswith('!'):
-                    invert = True
-                    pat = pat[1:]
-                if fnmatch.fnmatchcase(target, pat):
-                    include = not invert
-            if include:
-                output_file.write('Elaborating %s...\n' % top.unit)
-                cmd = ghdl[
-                    '-e',
-                    debug,
-                    std_switch,
-                    '--ieee=%s' % ieee,
-                    '--work=%s' % top.lib]
-                if coverage:
-                    cmd = cmd['-Wl,-lgcov']
-                cmd = cmd[top.unit]
-                exit_code, *_ = run_cmd(cmd)
-                if exit_code != 0:
-                    output_file.write('Elaboration for %s failed!\n' % top.unit)
-                else:
-                    output_file.write('Running %s...\n' % top.unit)
-                    cmd = ghdl[
-                        '-r',
-                        debug,
-                        std_switch,
-                        '--ieee=%s' % ieee,
-                        '--work=' + top.lib,
-                        top.unit,
-                        '--stop-time=' + top.get_timeout().replace(' ', '')]
-                    exit_code, stdout, *_ = run_cmd(cmd)
-                    if 'simulation stopped by --stop-time' in stdout:
-                        summary.append((1, ' * TIMEOUT %s' % top.unit))
-                        failed = True
-                    elif exit_code != 0:
-                        summary.append((2, ' * FAILED  %s' % top.unit))
-                        failed = True
-                    else:
-                        summary.append((0, ' * PASSED  %s' % top.unit))
+    # Construct the three GHDL commands.
+    common_switches = [debug, std_switch, '--ieee=%s' % ieee]
+    ghdl_analyze = ghdl['-a'][common_switches]
+    ghdl_elaborate = ghdl['-e'][common_switches]
+    ghdl_run = ghdl['-r'][common_switches]
 
-        output_file.write(
-            '\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
-        if failed:
-            output_file.write('Test suite FAILED\n')
-        else:
-            output_file.write('Test suite PASSED\n')
-        return int(failed)
+    # Add flags for coverage output if requested.
+    if coverage:
+        ghdl_analyze = ghdl_analyze['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
+        ghdl_elaborate = ghdl_elaborate['-Wl,-lgcov']
+
+    return ghdl_analyze, ghdl_elaborate, ghdl_run
+
+def _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run):
+    """Runs the given test case with the given GHDL commands, writing the
+    results to `output_file`. Returns a two-tuple of an exit code (higher is
+    a worse result, 0 is pass) and a message for the summary."""
+    output_file.write('Elaborating %s...\n' % test_case.unit)
+    exit_code, *_ = run_cmd(
+        output_file,
+        ghdl_elaborate,
+        '--work=%s' % test_case.lib,
+        test_case.unit)
+    if exit_code != 0:
+        output_file.write('Elaboration for %s failed!\n' % test_case.unit)
+        return 3, ' * ERROR   %s' % test_case.unit
+
+    output_file.write('Running %s...\n' % test_case.unit)
+    exit_code, stdout, *_ = run_cmd(
+        output_file,
+        ghdl_run,
+        '--work=' + test_case.lib, test_case.unit,
+        '--stop-time=' + test_case.get_timeout().replace(' ', ''))
+    if 'simulation stopped by --stop-time' in stdout:
+        return 1, ' * TIMEOUT %s' % test_case.unit
+    if exit_code != 0:
+        return 2, ' * FAILED  %s' % test_case.unit
+    return 0, ' * PASSED  %s' % test_case.unit
+
+def _run(vhd_list, output_file, **kwargs):
+    """Runs this backend in the current working directory."""
+
+    # Construct the plumbum command representations of the three GHDL commands
+    # we need, complete with all flags that are not file-dependent.
+    cmds = _get_ghdl_cmds(vhd_list, **kwargs)
+    ghdl_analyze, ghdl_elaborate, ghdl_run = cmds
+
+    # Analyze all files with GHDL.
+    output_file.write('Analyzing...\n')
+    failed = False
+    for vhd in vhd_list.order:
+        exit_code, *_ = run_cmd(
+            output_file,
+            ghdl_analyze,
+            '--work=%s' % vhd.lib,
+            vhd.fname)
+        if exit_code != 0:
+            failed = True
+    if failed:
+        output_file.write('Analysis failed!\n')
+        return 2
+
+    # Construct a list of test cases.
+    test_cases = get_test_cases(vhd_list, **kwargs)
+
+    # Run the test cases.
+    summary = []
+    for test_case in test_cases:
+        summary.append(_run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run))
+
+    failed = any(map(lambda ent: ent[0], summary))
+
+    # Print a summary of the test case results.
+    output_file.write(
+        '\nFinal summary:\n' + '\n'.join(map(lambda ent: ent[1], sorted(summary))) + '\n')
+    if failed:
+        output_file.write('Test suite FAILED\n')
+    else:
+        output_file.write('Test suite PASSED\n')
+    return int(failed)
+
+def run(vhd_list, output_file, no_tempdir=False, **kwargs):
+    """Runs this backend."""
+    try:
+        from plumbum import local
+    except ImportError:
+        raise ImportError('the GHDL backend requires plumbum to be installed '
+                          '(pip3 install plumbum).')
 
     if no_tempdir:
-        return run_internal()
+        return _run(vhd_list, output_file, **kwargs)
     with tempfile.TemporaryDirectory() as tempdir:
         with local.cwd(tempdir):
-            return run_internal()
+            return _run(vhd_list, output_file, **kwargs)

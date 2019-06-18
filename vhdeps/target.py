@@ -16,7 +16,6 @@
 subdirectory."""
 
 import os
-import sys
 import importlib
 import argparse
 
@@ -26,7 +25,7 @@ for fname in os.listdir(os.path.join(os.path.dirname(__file__), 'targets')):
     if not fname.endswith('.py'):
         continue
     _name = os.path.splitext(os.path.basename(fname))[0]
-    if _name == '__init__':
+    if _name in ('__init__', 'shared'):
         continue
     _TARGETS[_name] = importlib.import_module('.targets.' + _name, package=__package__)
 
