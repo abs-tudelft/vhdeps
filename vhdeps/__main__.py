@@ -14,7 +14,8 @@
 
 """Simply runs `vhdeps.run_cli()` when run."""
 
+import sys
 from vhdeps import run_cli
 
 if __name__ == '__main__':
-    run_cli()
+    sys.exit(run_cli())

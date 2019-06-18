@@ -43,20 +43,16 @@ def print_help():
         print(get_argument_parser(name).format_help())
 
 def get_target(name):
-    """Returns the module of the target going by the given name."""
-    target = _TARGETS.get(name, None)
-    if target is None:
-        print('Unknown target "%s".' % name, file=sys.stderr)
-        print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
-        sys.exit(1)
-    return target
+    """Returns the module of the target going by the given name. Returns `None`
+    if the target does not exist."""
+    return _TARGETS.get(name, None)
 
 def get_argument_parser(name):
     """Returns the argparse `ArgumentParser` object for the target going by the
     given name."""
     mod = get_target(name)
     parser = argparse.ArgumentParser(
-        prog='%s %s' % (sys.argv[0], name),
+        prog='vhdeps %s' % name,
         description=mod.__doc__)
     if hasattr(mod, 'add_arguments'):
         mod.add_arguments(parser)

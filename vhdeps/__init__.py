@@ -14,18 +14,14 @@
 
 """Main module for vhdeps.
 
-Use `run_cli()` to run vhdeps as if it was run from the command line. Note
-that this will use `sys.argv` as the command line arguments and call
-`sys.exit()` when it completes, so this function is not intended for scripting
-vhdeps.
+Use `run_cli()` to run vhdeps as if it was run from the command line. For a
+more script-friendly interface, use the `vhdeps.vhdl' submodule directly."""
 
-To use only vhdeps' dependency analyzer in a user script, use the `vhdeps.vhdl'
-submodule directly."""
-
-def run_cli():
-    """Runs the vhdeps CLI. Note that this will use `sys.argv` as the command
-    line arguments and call `sys.exit()` when it completes, so this function is
-    not intended for scripting vhdeps."""
+def run_cli(args=None):
+    """Runs the vhdeps CLI. The command-line arguments are taken from `args`
+    when specified, or `sys.argv` by default. The return value is the exit code
+    for the process. If the backtrace option is passed, exceptions will not be
+    caught."""
     import sys
     import os
     import argparse
@@ -33,7 +29,7 @@ def run_cli():
     import vhdeps.target as targets
 
     parser = argparse.ArgumentParser(
-        usage='%s [flags] <sim/synth target> [toplevel ...] [--] [target-args]' % sys.argv[0],
+        usage='vhdeps [flags] <sim/synth target> [toplevel ...] [--] [target-args]',
         description='This script is a VHDL dependency analyzer. Given a list '
         'of VHDL files and/or directories containing VHDL files, it can '
         'generate a compile order and output this in various formats, such '
@@ -140,7 +136,9 @@ def run_cli():
         '--strict.')
 
     # Parse the command line.
-    args = sys.argv[1:]
+    if args is None:
+        args = sys.argv
+    args = args[1:]
     if '--' in args:
         index = args.index('--')
         target_args = args[index+1:]
@@ -153,21 +151,25 @@ def run_cli():
     # that internally.
     if args.targets:
         targets.print_help()
-        sys.exit(0)
+        return 0
 
     if args.style:
         print('The following style rules are enforced by -I/--strict:')
         print(' - Each VHDL file must define exactly one entity or exactly one package.')
         print(' - VHDL package names must use the _pkg suffix.')
         print(' - The filename must match the name of the VHDL entity/package.')
-        sys.exit(0)
+        return 0
 
     # Select the target.
     if args.target is None:
         print('Error: no target specified.', file=sys.stderr)
         parser.print_usage()
-        sys.exit(1)
+        return 1
     target = targets.get_target(args.target)
+    if target is None:
+        print('Unknown target "%s".' % name, file=sys.stderr)
+        print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
+        return 1
 
     # Parse the target's arguments, if any.
     target_args = targets.get_argument_parser(args.target).parse_args(target_args)
@@ -216,18 +218,18 @@ def run_cli():
                 code = target.run(vhd_list, output_file, **vars(target_args))
         if code is None:
             code = 0
-        sys.exit(code)
+        return code
 
     except Exception as exc: #pylint: disable=W0703
         if args.stacktrace:
             raise
         print('%s: %s' % (str(type(exc).__name__), str(exc)), file=sys.stderr)
-        sys.exit(-1)
+        return 1
 
     except KeyboardInterrupt as exc:
         if args.stacktrace:
             raise
-        sys.exit(-1)
+        return 1
 
 if __name__ == '__main__':
-    run_cli()
+    sys.exit(run_cli())
