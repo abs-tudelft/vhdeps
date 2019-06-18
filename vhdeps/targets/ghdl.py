@@ -59,9 +59,12 @@ def add_arguments(parser):
 def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
     try:
         from plumbum import local, ProcessExecutionError, TEE
+    except ImportError:
+        raise ImportError('the GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+    try:
         from plumbum.cmd import ghdl
     except ImportError:
-        raise ImportError('The GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+        raise ImportError('ghdl was not found.')
 
     debug = '-g0' if no_debug else '-g'
     if not pattern:
