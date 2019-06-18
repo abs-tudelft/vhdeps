@@ -27,9 +27,11 @@ def add_arguments(parser):
         'sequence in which they are specified, by default operating on entity '
         'names. If a pattern starts with \'!\', entities matched previously '
         'that also match this pattern are excluded. If a pattern starts with '
-        '\':\', the filename is matched instead. \':!\' combines the two. If '
-        'no patterns are specified, the matcher defaults to a single \'*_tc\' '
-        'pattern.')
+        '\':\', the filename is matched instead. \':!\' combines the two. '
+        'Note that the patterns match the *entire* entity name/absolute '
+        'filename, so make sure to prefix/suffix an asterisk if you want a '
+        'partial match. If no patterns are specified, the matcher defaults to '
+        'a single \'*_tc\' pattern.')
 
     parser.add_argument(
         '--ieee', metavar='lib', action='store',
