@@ -21,6 +21,7 @@ statement or simulator timeout in case of failure. This is reflected in the
 exit status of vsim when running in batch mode."""
 
 import sys
+import tempfile
 import fnmatch
 
 _header = """\
@@ -350,7 +351,19 @@ def add_arguments(parser):
         'no patterns are specified, the matcher defaults to a single \'*_tc\' '
         'pattern.')
 
-def run(l, f, pattern):
+    parser.add_argument(
+        '--tcl', action='store_true',
+        help='Don\'t run vsim; just output the TCL script.')
+
+    parser.add_argument(
+        '--gui', action='store_true',
+        help='Launch vsim in GUI mode versus batch mode.')
+
+    parser.add_argument(
+        '--no-tempdir', action='store_true',
+        help='Disables cwd\'ing to a temporary working directory.')
+
+def write_tcl(l, f, pattern):
     if not pattern:
         pattern = ['*_tc']
     f.write(_header)
@@ -393,3 +406,48 @@ def run(l, f, pattern):
     else:
         f.write('regression\n')
 
+def run(l, f, pattern, tcl, gui, no_tempdir):
+    if tcl:
+        if gui or no_tempdir:
+            print('Cannot combine --tcl with --gui or --no-tempdir!', file=sys.stderr)
+            return 2
+        write_tcl(l, f, pattern)
+        return 0
+
+    try:
+        from plumbum import local, ProcessExecutionError, TEE
+    except ImportError:
+        raise ImportError('the vsim backend requires plumbum to be installed to run vsim (pip3 install plumbum).')
+    try:
+        from plumbum.cmd import vsim
+    except ImportError:
+        raise ImportError('no vsim-compatible simulator was found.')
+    from plumbum.cmd import cat
+
+    def run_cmd(cmd):
+        if f == sys.stdout:
+            rc, stdout, stderr = cmd & TEE
+        else:
+            rc, stdout, stderr = cmd.run(retcode=None)
+            f.write(stdout)
+            f.write(stderr)
+        return rc, stdout, stderr
+
+    def run_internal():
+        with open('vsim.do', 'w') as f_tcl:
+            write_tcl(l, f_tcl, pattern)
+
+        if gui:
+            cmd = vsim['-do', 'vsim.do']
+        else:
+            cmd = cat['vsim.do'] | vsim
+
+        rc, *_ = run_cmd(cmd)
+
+        return rc
+
+    if no_tempdir:
+        return run_internal()
+    with tempfile.TemporaryDirectory() as tempdir:
+        with local.cwd(tempdir):
+            return run_internal()
