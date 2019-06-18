@@ -14,6 +14,11 @@
 
 """Generic compile order output to stdout."""
 
-def run(l, f):
-    for vhd in l.order:
-        f.write('%s %s %04d %s\n' % ('top' if vhd in l.top else 'dep', vhd.lib, vhd.version, vhd.fname))
+def run(vhd_list, output_file):
+    """Runs this backend."""
+    for vhd in vhd_list.order:
+        output_file.write('%s %s %04d %s\n' % (
+            'top' if vhd in vhd_list.top else 'dep',
+            vhd.lib,
+            vhd.version,
+            vhd.fname))

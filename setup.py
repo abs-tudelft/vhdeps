@@ -34,4 +34,5 @@ setup(
     entry_points = {'console_scripts': ['vhdeps=vhdeps:run_cli']},
     python_requires = '>=3',
     install_requires = ['plumbum'],
+    setup_requires = ['setuptools-lint', 'pylint'],
 )

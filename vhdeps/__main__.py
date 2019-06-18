@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from vhdeps import *
+"""Simply runs `vhdeps.run_cli()` when run."""
+
+from vhdeps import run_cli
 
 if __name__ == '__main__':
     run_cli()

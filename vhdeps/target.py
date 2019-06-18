@@ -12,25 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Submodule that manages discovering and loading submodules from the targets
+subdirectory."""
+
 import os
 import sys
 import importlib
 import argparse
 
-_targets = {}
+_TARGETS = {}
 
 for fname in os.listdir(os.path.join(os.path.dirname(__file__), 'targets')):
     if not fname.endswith('.py'):
         continue
-    name = os.path.splitext(os.path.basename(fname))[0]
-    if name == '__init__':
+    _name = os.path.splitext(os.path.basename(fname))[0]
+    if _name == '__init__':
         continue
-    _targets[name] = importlib.import_module('.targets.' + name, package=__package__)
+    _TARGETS[_name] = importlib.import_module('.targets.' + _name, package=__package__)
 
-def print_targets():
+
+def print_help():
     """Prints a list of available targets and documentation."""
     print('Available targets:')
-    for name, mod in sorted(_targets.items()):
+    for name, _ in sorted(_TARGETS.items()):
         print('\n%s %s %s\n' % (
             '-' * ((78 - len(name)) // 2),
             name,
@@ -39,7 +43,8 @@ def print_targets():
         print(get_argument_parser(name).format_help())
 
 def get_target(name):
-    target = _targets.get(name, None)
+    """Returns the module of the target going by the given name."""
+    target = _TARGETS.get(name, None)
     if target is None:
         print('Unknown target "%s".' % name, file=sys.stderr)
         print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
@@ -47,6 +52,8 @@ def get_target(name):
     return target
 
 def get_argument_parser(name):
+    """Returns the argparse `ArgumentParser` object for the target going by the
+    given name."""
     mod = get_target(name)
     parser = argparse.ArgumentParser(
         prog='%s %s' % (sys.argv[0], name),

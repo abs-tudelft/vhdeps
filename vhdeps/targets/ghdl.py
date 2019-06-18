@@ -20,6 +20,8 @@ import tempfile
 import fnmatch
 
 def add_arguments(parser):
+    """Adds the command-line arguments supported by this target to the given
+    `argparse.ArgumentParser` object."""
     parser.add_argument(
         '--pattern', metavar='pat', action='append',
         help='Specifies a pattern used to filter which toplevel entities are '
@@ -58,11 +60,13 @@ def add_arguments(parser):
         'backend! Combine with --no-tempdir to prevent the output from being '
         'deleted when vhdeps terminates.')
 
-def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
+def run(vhd_list, output_file, pattern, ieee, no_debug, no_tempdir, coverage):
+    """Runs this backend."""
     try:
-        from plumbum import local, ProcessExecutionError, TEE
+        from plumbum import local, TEE
     except ImportError:
-        raise ImportError('the GHDL backend requires plumbum to be installed (pip3 install plumbum).')
+        raise ImportError(
+            'the GHDL backend requires plumbum to be installed (pip3 install plumbum).')
     try:
         from plumbum.cmd import ghdl
     except ImportError:
@@ -74,12 +78,13 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
 
     # Make sure all files in the compile order have the same version.
     versions = set()
-    for vhd in l.order:
+    for vhd in vhd_list.order:
         versions.add(vhd.version)
     if len(versions) > 1:
-        raise ValueError('GHDL does not support mixing VHDL versions. Use the -v flag to force one. '
-            'The following versions were detected: ' + ', '.join(map(str, sorted(versions))))
-    elif versions:
+        raise ValueError('GHDL does not support mixing VHDL versions. Use the '
+                         '-v flag to force one. The following versions were '
+                         'detected: ' + ', '.join(map(str, sorted(versions))))
+    if versions:
         version = next(iter(versions))
     else:
         version = 2008
@@ -94,21 +99,23 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
     }
     std_switch = supported_versions.get(version, None)
     if std_switch is None:
-        raise ValueError('GHDL supports only the following versions: ' + ', '.join(map(str, sorted(supported_versions))))
+        raise ValueError(
+            'GHDL supports only the following versions: '
+            + ', '.join(map(str, sorted(supported_versions))))
 
     def run_cmd(cmd):
-        if f == sys.stdout:
-            rc, stdout, stderr = cmd & TEE
+        if output_file == sys.stdout:
+            exit_code, stdout, stderr = cmd & TEE
         else:
-            rc, stdout, stderr = cmd.run(retcode=None)
-            f.write(stdout)
-            f.write(stderr)
-        return rc, stdout, stderr
+            exit_code, stdout, stderr = cmd.run(retcode=None)
+            output_file.write(stdout)
+            output_file.write(stderr)
+        return exit_code, stdout, stderr
 
     def run_internal():
-        f.write('Analyzing...\n')
+        output_file.write('Analyzing...\n')
         failed = False
-        for vhd in l.order:
+        for vhd in vhd_list.order:
             cmd = ghdl[
                 '-a',
                 debug,
@@ -118,14 +125,14 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
             if coverage:
                 cmd = cmd['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
             cmd = cmd[vhd.fname]
-            rc, *_ = run_cmd(cmd)
-            if rc != 0:
+            exit_code, *_ = run_cmd(cmd)
+            if exit_code != 0:
                 failed = True
         if failed:
-            f.write('Analysis failed!\n')
+            output_file.write('Analysis failed!\n')
             return 2
         summary = []
-        for top in l.top:
+        for top in vhd_list.top:
             include = False
             for pat in pattern:
                 target = top.unit
@@ -139,7 +146,7 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
                 if fnmatch.fnmatchcase(target, pat):
                     include = not invert
             if include:
-                f.write('Elaborating %s...\n' % top.unit)
+                output_file.write('Elaborating %s...\n' % top.unit)
                 cmd = ghdl[
                     '-e',
                     debug,
@@ -149,11 +156,11 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
                 if coverage:
                     cmd = cmd['-Wl,-lgcov']
                 cmd = cmd[top.unit]
-                rc, *_ = run_cmd(cmd)
-                if rc != 0:
-                    f.write('Elaboration for %s failed!\n' % top.unit)
+                exit_code, *_ = run_cmd(cmd)
+                if exit_code != 0:
+                    output_file.write('Elaboration for %s failed!\n' % top.unit)
                 else:
-                    f.write('Running %s...\n' % top.unit)
+                    output_file.write('Running %s...\n' % top.unit)
                     cmd = ghdl[
                         '-r',
                         debug,
@@ -162,23 +169,23 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
                         '--work=' + top.lib,
                         top.unit,
                         '--stop-time=' + top.get_timeout().replace(' ', '')]
-                    rc, stdout, *_ = run_cmd(cmd)
+                    exit_code, stdout, *_ = run_cmd(cmd)
                     if 'simulation stopped by --stop-time' in stdout:
                         summary.append((1, ' * TIMEOUT %s' % top.unit))
                         failed = True
-                    elif rc != 0:
+                    elif exit_code != 0:
                         summary.append((2, ' * FAILED  %s' % top.unit))
                         failed = True
                     else:
                         summary.append((0, ' * PASSED  %s' % top.unit))
 
-        f.write('\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
+        output_file.write(
+            '\nFinal summary:\n' + '\n'.join(map(lambda x: x[1], sorted(summary))) + '\n')
         if failed:
-            f.write('Test suite FAILED\n')
-            return 1
+            output_file.write('Test suite FAILED\n')
         else:
-            f.write('Test suite PASSED\n')
-            return 0
+            output_file.write('Test suite PASSED\n')
+        return int(failed)
 
     if no_tempdir:
         return run_internal()

@@ -12,21 +12,23 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Core dependency analysis module for vhdeps."""
+
 import re
 import os
 import sys
 import functools
 import fnmatch
-import re
 from collections import deque
 
 class StyleError(Exception):
-    pass
+    """Thrown to indicate that a style error was detected during a strict
+    import."""
 
 class ResolutionError(Exception):
-    pass
+    """Thrown when a dependency of a required file could not be resolved."""
 
-def parse_version(version):
+def _parse_version(version):
     """Parses a VHDL version string or int, 2- or 4-digit style, to a full
     4-digit version identifier integer."""
     if version is None:
@@ -39,18 +41,27 @@ def parse_version(version):
     return version
 
 @functools.total_ordering
-class VhdFile(object):
+class VhdFile:
     """Represents a VHDL file."""
 
-    ENTITY_DEF    = re.compile(r'entity\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
-    ENTITY_USE    = re.compile(r':\s*entity\s+(([a-zA-Z][a-zA-Z0-9_]*)\.)?([a-zA-Z][a-zA-Z0-9_]*)\s*[(\sport)|(\sgeneric)|;]')
-    COMPONENT_DEF = re.compile(r'component\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
-    COMPONENT_USE = re.compile(r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))')
-    PACKAGE_DEF   = re.compile(r'package\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
-    PACKAGE_USE   = re.compile(r'use\s+([a-zA-Z][a-zA-Z0-9_]*)\.([a-zA-Z][a-zA-Z0-9_]*)')
-    TIMEOUT       = re.compile(r'\-\-\s*pragma\s+simulation\s+timeout\s+([0-9]+(?:\.[0-9]*)?\s+[pnum]?s)')
+    ENTITY_DEF = re.compile(
+        r'entity\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
+    ENTITY_USE = re.compile(
+        r':\s*entity\s+(([a-zA-Z][a-zA-Z0-9_]*)\.)?'
+        r'([a-zA-Z][a-zA-Z0-9_]*)\s*[(\sport)|(\sgeneric)|;]')
+    COMPONENT_DEF = re.compile(
+        r'component\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
+    COMPONENT_USE = re.compile(
+        r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))')
+    PACKAGE_DEF = re.compile(
+        r'package\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
+    PACKAGE_USE = re.compile(
+        r'use\s+([a-zA-Z][a-zA-Z0-9_]*)\.([a-zA-Z][a-zA-Z0-9_]*)')
+    TIMEOUT = re.compile(
+        r'\-\-\s*pragma\s+simulation\s+timeout\s+([0-9]+(?:\.[0-9]*)?\s+[pnum]?s)')
 
-    def __init__(self, fname, lib='work', override_version=None, desired_version=2008, strict=False, allow_bb=False):
+    def __init__(self, fname, lib='work', override_version=None,
+                 desired_version=2008, strict=False, allow_bb=False):
         """Creates a representation of the definitions and uses of a VHDL file
         for dependency resolution. `fname` should be the path to the VHDL file.
         `lib` can be used to specify a nonstandard VHDL library for the file.
@@ -66,9 +77,9 @@ class VhdFile(object):
 
         # Initialize and save parameters.
         super().__init__()
-        self.fname    = fname
-        self.lib      = lib
-        self.strict   = strict
+        self.fname = fname
+        self.lib = lib
+        self.strict = strict
         self.allow_bb = allow_bb
 
         # Determine the VHDL versions this file is supposed to be compatible
@@ -76,12 +87,14 @@ class VhdFile(object):
         if override_version is not None:
             versions = (override_version,)
         else:
-            versions = map(lambda x: x.group(1), re.finditer(r'\.(19[7-9]\d|20[0-6]\d|\d\d)(?=\.)', fname))
-        self.versions = set(map(parse_version, versions))
+            versions = map(lambda x: x.group(1),
+                           re.finditer(r'\.(19[7-9]\d|20[0-6]\d|\d\d)(?=\.)', fname))
+        self.versions = set(map(_parse_version, versions))
 
         # Determine the version that we'll be compiling the file with if we
         # need to.
-        self.version = min(self.versions, key=lambda v: abs(v - desired_version), default=desired_version)
+        self.version = min(self.versions,
+                           key=lambda v: abs(v - desired_version), default=desired_version)
 
         # Determine whether this file is simulation- or synthesis-only.
         self.use_for_synthesis = '.sim.' not in fname
@@ -90,18 +103,31 @@ class VhdFile(object):
         # Read and "parse" the file. "Parsing" is limited to stripping comments
         # and pattern matching to keep things simple.
         try:
-            with open(fname, 'r') as f:
-                contents = f.read().lower()
-        except Exception as e:
-            raise RuntimeError('failed to read VHDL file at %s: %s' % (self.fname, e))
-        sim_timeout = [match.group(1) for match in self.TIMEOUT.finditer(contents)]
+            with open(fname, 'r') as fildes:
+                contents = fildes.read().lower()
+        except Exception as exc:
+            raise RuntimeError('failed to read VHDL file at %s: %s' % (self.fname, exc))
+        sim_timeout = [match.group(1)for match in self.TIMEOUT.finditer(contents)]
         contents = ' '.join((line.split('--')[0] for line in contents.split('\n')))
-        self.entity_defs = {match.group(1) for match in self.ENTITY_DEF.finditer(contents)}
-        self.entity_uses = {(match.group(2), match.group(3)) for match in self.ENTITY_USE.finditer(contents)}
-        self.component_defs = {match.group(1) for match in self.COMPONENT_DEF.finditer(contents)}
-        self.component_uses = {match.group(1) for match in self.COMPONENT_USE.finditer(contents)}
-        self.package_defs = {match.group(1) for match in self.PACKAGE_DEF.finditer(contents)}
-        self.package_uses = {(match.group(1), match.group(2)) for match in self.PACKAGE_USE.finditer(contents)}
+
+        self.entity_defs = {
+            match.group(1)
+            for match in self.ENTITY_DEF.finditer(contents)}
+        self.entity_uses = {
+            (match.group(2), match.group(3))
+            for match in self.ENTITY_USE.finditer(contents)}
+        self.component_defs = {
+            match.group(1)
+            for match in self.COMPONENT_DEF.finditer(contents)}
+        self.component_uses = {
+            match.group(1)
+            for match in self.COMPONENT_USE.finditer(contents)}
+        self.package_defs = {
+            match.group(1)
+            for match in self.PACKAGE_DEF.finditer(contents)}
+        self.package_uses = {
+            (match.group(1), match.group(2))
+            for match in self.PACKAGE_USE.finditer(contents)}
 
         # If this file contains a single entity or package, record its name.
         if len(self.entity_defs) + len(self.package_defs) != 1:
@@ -128,7 +154,11 @@ class VhdFile(object):
             if os.path.basename(self.fname).lower().split('.')[0] != self.unit.lower():
                 raise StyleError('Filename does not match design unit for %s' % self.fname)
 
-    def resolve_dependencies(self, resolver, ignore_libs={'ieee', 'std'}):
+        # Before and anywhere are populated by resolve_dependencies.
+        self.before = None
+        self.anywhere = None
+
+    def resolve_dependencies(self, resolver, ignore_libs=None):
         """Using a function that resolves a VHDL design unit identification
         triplet to a `VhdFile` object, record this file's dependencies in
         `self.before` (files that must be compiled before this file) and
@@ -141,6 +171,9 @@ class VhdFile(object):
         dependency is strong (`True`), that is, that the dependent file must be
         compiled before this file. Weak dependencies (`False`) can be compiled
         at any time during the compilation process."""
+
+        if ignore_libs is None:
+            ignore_libs = {'ieee', 'std'}
 
         self.before = set()
         self.anywhere = set()
@@ -157,10 +190,10 @@ class VhdFile(object):
                     lib = self.lib
                 try:
                     vhd = resolver(unit_type, lib, name, True)
-                except ResolutionError as e:
+                except ResolutionError as exc:
                     raise ResolutionError(
                         'while resolving %s %s.%s in %s:\n%s' %
-                        (unit_type, lib, name, self, e))
+                        (unit_type, lib, name, self, exc))
                 self.before.add(vhd)
                 if unit_type == 'package':
                     component_decl_vhds.append(vhd)
@@ -184,13 +217,14 @@ class VhdFile(object):
                 # Look for the accompanying entity.
                 try:
                     self.anywhere.add(resolver('entity', lib, comp, False))
-                except ResolutionError as e:
-                    raise ResolutionError('black box: %s' % e)
+                except ResolutionError as exc:
+                    if not allow_bb:
+                        raise ResolutionError('black box: %s' % exc)
 
-            except ResolutionError as e:
+            except ResolutionError as exc:
                 raise ResolutionError(
                     'while resolving component %s in %s:\n%s' %
-                    (comp, self, e))
+                    (comp, self, exc))
 
     def get_timeout(self):
         """Returns the value of the simulation timeout pragma for test cases.
@@ -221,6 +255,7 @@ class VhdFile(object):
 
     # Debugging stuff.
     def dump(self):
+        """Dumps information about this object to stdout."""
         print('%s (%s):' % (self.fname, self.lib))
         print(' - define:')
         for ent in self.entity_defs:
@@ -229,6 +264,13 @@ class VhdFile(object):
             print('    * package %s' % pkg)
         for comp in self.component_defs:
             print('    * component %s' % comp)
+        print(' - use:')
+        for ent in self.entity_uses:
+            print('    * entity %s' % ent)
+        for pkg in self.package_uses:
+            print('    * package %s' % pkg)
+        for comp in self.component_uses:
+            print('    * component %s' % comp)
         print()
 
     def __str__(self):
@@ -236,8 +278,7 @@ class VhdFile(object):
 
     __repr__ = __str__
 
-
-class VhdList(object):
+class VhdList:
     """Represents a list of all VHDL files available for compilation."""
 
     def __init__(self, mode='sim', desired_version=None, required_version=None):
@@ -246,28 +287,29 @@ class VhdList(object):
         supported VHDL version of the target."""
         super().__init__()
         self.mode = mode
-        self.required_version = parse_version(required_version)
+        self.required_version = _parse_version(required_version)
         if self.required_version is None:
             if desired_version is None:
                 desired_version = 2008
-            self.desired_version = parse_version(desired_version)
+            self.desired_version = _parse_version(desired_version)
         else:
             self.desired_version = self.required_version
         self.files = set()
         self.design_units = {}
         self.order = deque()
+        self.top = []
 
     def add_dir(self, dirname, recursive=True, **kwargs):
         """Adds a directory to the VHDL file list. `dirname` specifies the root
         directory, `recursive` specifies whether we should recurse into
         subdirectories. `add_file` is called for all `*.vhd` and `*.vhdl` files
         encountered using the specified keyword arguments."""
-        for f in os.listdir(dirname):
-            fname = os.path.join(dirname, f)
+        for basename in os.listdir(dirname):
+            fname = os.path.join(dirname, basename)
             if os.path.isdir(fname):
                 if recursive:
                     self.add_dir(fname, recursive, **kwargs)
-            elif f.lower().endswith('.vhd') or f.lower().endswith('.vhdl'):
+            elif basename.lower().endswith('.vhd') or basename.lower().endswith('.vhdl'):
                 self.add_file(fname, **kwargs)
 
     def add_file(self, *args, **kwargs):
@@ -297,12 +339,13 @@ class VhdList(object):
         or `None` if the file is matches all filters."""
         if self.mode == 'sim' and not vhd.use_for_simulation:
             return '%s is synthesis-only' % vhd
-        elif self.mode == 'syn' and not vhd.use_for_synthesis:
+        if self.mode == 'syn' and not vhd.use_for_synthesis:
             return '%s is simulation-only' % vhd
-        elif self.required_version is not None and vhd.versions and not self.required_version in vhd.versions:
-            return '%s is not compatible with VHDL %s' % (vhd, self.required_version)
-        else:
-            return None
+        if self.required_version is not None:
+            if vhd.versions:
+                if not self.required_version in vhd.versions:
+                    return '%s is not compatible with VHDL %s' % (vhd, self.required_version)
+        return None
 
     def resolve_design_unit(self, unit_type, lib, name, strong_dependency):
         """Resolves the requested design unit to a file. Adds the file to
@@ -328,9 +371,9 @@ class VhdList(object):
             filtered_out = []
             for vhd in self.files:
                 if vhd.lib == lib and name in getattr(vhd, unit_type + '_defs'):
-                    x = self.is_file_filtered_out(vhd)
-                    if x:
-                        filtered_out.append(x)
+                    filter_reason = self.is_file_filtered_out(vhd)
+                    if filter_reason:
+                        filtered_out.append(filter_reason)
                     else:
                         options.append(vhd)
 
@@ -340,10 +383,9 @@ class VhdList(object):
                     raise ResolutionError(
                         '%s %s.%s is defined, but only in files that were filtered out: %s' %
                         (unit_type, lib, name, ', '.join(filtered_out)))
-                else:
-                    raise ResolutionError(
-                        'could not find %s %s.%s' %
-                        (unit_type, lib, name))
+                raise ResolutionError(
+                    'could not find %s %s.%s' %
+                    (unit_type, lib, name))
 
             # We may end up with multiple options depending on, for instance,
             # VHDL version. The user specifies a desired VHDL version to
@@ -360,7 +402,8 @@ class VhdList(object):
 
             # Now filter out any file that doesn't support the best version
             # we found.
-            options = list(filter(lambda vhd: best_version in vhd.versions or not vhd.versions, options))
+            options = list(filter(
+                lambda vhd: best_version in vhd.versions or not vhd.versions, options))
 
             # If we still have more than one option, let the user figure it
             # out.
@@ -417,9 +460,10 @@ class VhdList(object):
                 lib = req[0].lower() if len(req) > 1 else 'work'
                 found = False
                 for elib, ename in entities:
-                    if fnmatch.fnmatchcase(elib.lower(), lib) and fnmatch.fnmatchcase(ename.lower(), name):
-                        required_entities.add((elib, ename))
-                        found = True
+                    if fnmatch.fnmatchcase(elib.lower(), lib):
+                        if fnmatch.fnmatchcase(ename.lower(), name):
+                            required_entities.add((elib, ename))
+                            found = True
                 if not found:
                     print('Warning: %s.%s did not match anything.' % (lib, name), file=sys.stderr)
             entities = required_entities
@@ -445,5 +489,6 @@ class VhdList(object):
 
     # Debugging stuff.
     def dump(self):
+        """Dumps information about all the VHDL files in this list to stdout."""
         for vhd in self.files:
             vhd.dump()

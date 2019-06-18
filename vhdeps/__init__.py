@@ -12,12 +12,25 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from vhdeps.vhdl import *
-from vhdeps.target import *
+"""Main module for vhdeps.
+
+Use `run_cli()` to run vhdeps as if it was run from the command line. Note
+that this will use `sys.argv` as the command line arguments and call
+`sys.exit()` when it completes, so this function is not intended for scripting
+vhdeps.
+
+To use only vhdeps' dependency analyzer in a user script, use the `vhdeps.vhdl'
+submodule directly."""
 
 def run_cli():
+    """Runs the vhdeps CLI. Note that this will use `sys.argv` as the command
+    line arguments and call `sys.exit()` when it completes, so this function is
+    not intended for scripting vhdeps."""
     import sys
+    import os
     import argparse
+    import vhdeps.vhdl as vhdl
+    import vhdeps.target as targets
 
     parser = argparse.ArgumentParser(
         usage='%s [flags] <sim/synth target> [toplevel ...] [--] [target-args]' % sys.argv[0],
@@ -139,7 +152,7 @@ def run_cli():
     # --style. --help also falls within this category, but argparse handles
     # that internally.
     if args.targets:
-        print_targets()
+        targets.print_help()
         sys.exit(0)
 
     if args.style:
@@ -154,13 +167,13 @@ def run_cli():
         print('Error: no target specified.', file=sys.stderr)
         parser.print_usage()
         sys.exit(1)
-    target = get_target(args.target)
+    target = targets.get_target(args.target)
 
     # Parse the target's arguments, if any.
-    target_args = get_argument_parser(args.target).parse_args(target_args)
+    target_args = targets.get_argument_parser(args.target).parse_args(target_args)
 
     # Construct the list of VHDL files.
-    l = VhdList(
+    vhd_list = vhdl.VhdList(
         mode=args.mode,
         desired_version=args.desired_version,
         required_version=args.version)
@@ -168,19 +181,20 @@ def run_cli():
     try:
         # Add the specified files/directories to the VHDL file list.
         def add_dir(arglist, **kwargs):
-            for p in arglist:
-                p = p.split(':', maxsplit=2)
-                fname   = p[-1]
-                lib     = p[-2] if len(p) >= 2 else 'work'
-                override_version = int(p[-3]) if len(p) >= 3 else None
+            for arg in arglist:
+                arg = arg.split(':', maxsplit=2)
+                fname = arg[-1]
+                lib = arg[-2] if len(arg) >= 2 else 'work'
+                override_version = int(arg[-3]) if len(arg) >= 3 else None
                 if os.path.isdir(fname):
-                    l.add_dir(fname, lib, override_version=override_version, **kwargs)
+                    vhd_list.add_dir(fname, lib, override_version=override_version, **kwargs)
                 else:
-                    l.add_file(fname, lib, override_version=override_version, **kwargs)
+                    vhd_list.add_file(fname, lib, override_version=override_version, **kwargs)
 
         # Default to including the working directory if no includes are specified.
         if not args.include and not args.strict and not args.external:
-            print('Including the current working directory recursively by default...', file=sys.stderr)
+            print('Including the current working directory recursively by default...',
+                  file=sys.stderr)
             args.include.append('.')
 
         add_dir(args.include)
@@ -188,29 +202,29 @@ def run_cli():
         add_dir(args.external, allow_bb=True)
 
         # Determine the compile order.
-        l.determine_compile_order(args.entity)
+        vhd_list.determine_compile_order(args.entity)
 
-        if not l.order:
+        if not vhd_list.order:
             print('Error: no VHDL files found.', file=sys.stderr)
             sys.exit(1)
 
         # Run the selected target with the selected output file or stdout.
         if args.outfile is None:
-            code = target.run(l, sys.stdout, **vars(target_args))
+            code = target.run(vhd_list, sys.stdout, **vars(target_args))
         else:
-            with open(args.outfile, 'w') as f:
-                code = target.run(l, f, **vars(target_args))
+            with open(args.outfile, 'w') as output_file:
+                code = target.run(vhd_list, output_file, **vars(target_args))
         if code is None:
             code = 0
         sys.exit(code)
 
-    except Exception as e:
+    except Exception as exc: #pylint: disable=W0703
         if args.stacktrace:
             raise
-        print('%s: %s' % (str(type(e).__name__), str(e)), file=sys.stderr)
+        print('%s: %s' % (str(type(exc).__name__), str(exc)), file=sys.stderr)
         sys.exit(-1)
 
-    except KeyboardInterrupt as e:
+    except KeyboardInterrupt as exc:
         if args.stacktrace:
             raise
         sys.exit(-1)
