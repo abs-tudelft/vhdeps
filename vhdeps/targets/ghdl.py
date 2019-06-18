@@ -58,7 +58,7 @@ def add_arguments(parser):
 
 def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
     try:
-        from plumbum import local, ProcessExecutionError, FG
+        from plumbum import local, ProcessExecutionError, TEE
         from plumbum.cmd import ghdl
     except ImportError:
         raise ImportError('The GHDL backend requires plumbum to be installed (pip3 install plumbum).')
@@ -91,6 +91,15 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
     if std_switch is None:
         raise ValueError('GHDL supports only the following versions: ' + ', '.join(map(str, sorted(supported_versions))))
 
+    def run_cmd(cmd):
+        if f == sys.stdout:
+            rc, stdout, stderr = cmd & TEE
+        else:
+            rc, stdout, stderr = cmd.run(retcode=None)
+            f.write(stdout)
+            f.write(stderr)
+        return rc, stdout, stderr
+
     def run_internal():
         f.write('Analyzing...\n')
         failed = False
@@ -104,11 +113,9 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
             if coverage:
                 cmd = cmd['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
             cmd = cmd[vhd.fname]
-            rc, stdout, stderr = cmd.run(retcode=None)
+            rc, *_ = run_cmd(cmd)
             if rc != 0:
                 failed = True
-            f.write(stdout)
-            f.write(stderr)
         if failed:
             f.write('Analysis failed!\n')
             return 2
@@ -137,9 +144,7 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
                 if coverage:
                     cmd = cmd['-Wl,-lgcov']
                 cmd = cmd[top.unit]
-                rc, stdout, stderr = cmd.run(retcode=None)
-                f.write(stdout)
-                f.write(stderr)
+                rc, *_ = run_cmd(cmd)
                 if rc != 0:
                     f.write('Elaboration for %s failed!\n' % top.unit)
                 else:
@@ -152,9 +157,7 @@ def run(l, f, pattern, ieee, no_debug, no_tempdir, coverage):
                         '--work=' + top.lib,
                         top.unit,
                         '--stop-time=' + top.get_timeout().replace(' ', '')]
-                    rc, stdout, stderr = cmd.run(retcode=None)
-                    f.write(stdout)
-                    f.write(stderr)
+                    rc, stdout, *_ = run_cmd(cmd)
                     if 'simulation stopped by --stop-time' in stdout:
                         summary.append((1, ' * TIMEOUT %s' % top.unit))
                         failed = True
