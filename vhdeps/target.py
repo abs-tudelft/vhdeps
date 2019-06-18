@@ -15,6 +15,7 @@
 import os
 import sys
 import importlib
+import argparse
 
 _targets = {}
 
@@ -29,11 +30,13 @@ for fname in os.listdir(os.path.join(os.path.dirname(__file__), 'targets')):
 def print_targets():
     """Prints a list of available targets and documentation."""
     print('Available targets:')
-    print()
     for name, mod in sorted(_targets.items()):
-        print(' - %s' % name)
-        print('   ' + '\n   '.join(mod.__doc__.split('\n')))
-        print()
+        print('\n%s %s %s\n' % (
+            '-' * ((78 - len(name)) // 2),
+            name,
+            '-' * ((79 - len(name)) // 2)
+        ))
+        print(get_argument_parser(name).format_help())
 
 def get_target(name):
     target = _targets.get(name, None)
@@ -42,3 +45,12 @@ def get_target(name):
         print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
         sys.exit(1)
     return target
+
+def get_argument_parser(name):
+    mod = get_target(name)
+    parser = argparse.ArgumentParser(
+        prog='%s %s' % (sys.argv[0], name),
+        description=mod.__doc__)
+    if hasattr(mod, 'add_arguments'):
+        mod.add_arguments(parser)
+    return parser
