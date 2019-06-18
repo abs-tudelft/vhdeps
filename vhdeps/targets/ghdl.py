@@ -16,6 +16,9 @@
 to be on the system path and that the Plumbum Python library is installed."""
 
 import tempfile
+import threading
+import queue
+import io
 from .shared import add_arguments_for_get_test_cases, get_test_cases, run_cmd
 
 def add_arguments(parser):
@@ -47,6 +50,11 @@ def add_arguments(parser):
         'coverage data. This only works when GHDL is compiled with the GCC '
         'backend! Combine with --no-tempdir to prevent the output from being '
         'deleted when vhdeps terminates.')
+
+    parser.add_argument(
+        '-j', '--jobs', metavar='N', nargs='?', action='append', type=int,
+        help='Runs the test cases in parallel with the given number of '
+        'parallel GHDL runs, or infinite if no argument is specified.')
 
 def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=False, **_):
     """Returns a three-tuple of the analyze, elaborate, and run commands for
@@ -126,7 +134,7 @@ def _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run):
         return 2, ' * FAILED  %s' % test_case.unit
     return 0, ' * PASSED  %s' % test_case.unit
 
-def _run(vhd_list, output_file, **kwargs):
+def _run(vhd_list, output_file, jobs=None, **kwargs):
     """Runs this backend in the current working directory."""
 
     # Construct the plumbum command representations of the three GHDL commands
@@ -153,15 +161,76 @@ def _run(vhd_list, output_file, **kwargs):
     test_cases = get_test_cases(vhd_list, **kwargs)
 
     # Run the test cases.
-    summary = []
-    for test_case in test_cases:
-        summary.append(_run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run))
+    if jobs is None:
 
-    failed = any(map(lambda ent: ent[0], summary))
+        # Run sequentially.
+        results = [
+            _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run)
+            for test_case in test_cases]
+
+    else:
+
+        # Run multithreaded.
+        pending_test_cases = queue.Queue()
+        for test_case in test_cases:
+            pending_test_cases.put(test_case)
+        result_queue = queue.Queue()
+        output_lock = threading.Lock()
+
+        # Worker thread function. Runs test cases until there are no more
+        # pending test cases.
+        def thread_run():
+            try:
+                while True:
+                    test_case = pending_test_cases.get_nowait()
+                    stdout = io.StringIO()
+                    result = _run_test_case(stdout, test_case, ghdl_elaborate, ghdl_run)
+                    with output_lock:
+                        output_file.write(stdout.getvalue())
+                    result_queue.put(result)
+                    pending_test_cases.task_done()
+            except queue.Empty:
+                pass
+
+        # Construct a thread pool to execute the test cases.
+        pool = []
+        jobs = jobs[-1]
+        if not jobs:
+            jobs = len(test_cases)
+        for _ in range(jobs):
+            thread = threading.Thread(target=thread_run)
+            thread.start()
+            pool.append(thread)
+
+        # Wait for the threads to finish. If we get a keyboard interrupt,
+        # remove all the pending test cases from the queue and wait again.
+        try:
+            pending_test_cases.join()
+            for thread in pool:
+                thread.join()
+        except KeyboardInterrupt:
+            try:
+                while True:
+                    pending_test_cases.get_nowait()
+            except queue.Empty:
+                pass
+            for thread in pool:
+                thread.join()
+            raise
+
+        # Drain the result queue into a list.
+        results = []
+        while not result_queue.empty():
+            results.append(result_queue.get())
+        assert len(results) == len(test_cases)
+
+    # If any of the entries in summary have a nonzero code attached to them,
+    # something went wrong.
+    failed = any(map(lambda ent: ent[0], results))
 
     # Print a summary of the test case results.
     output_file.write(
-        '\nFinal summary:\n' + '\n'.join(map(lambda ent: ent[1], sorted(summary))) + '\n')
+        '\nFinal summary:\n' + '\n'.join(map(lambda ent: ent[1], sorted(results))) + '\n')
     if failed:
         output_file.write('Test suite FAILED\n')
     else:
