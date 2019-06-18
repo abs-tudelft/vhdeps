@@ -19,6 +19,7 @@ import tempfile
 import threading
 import queue
 import io
+import os
 from .shared import add_arguments_for_get_test_cases, get_test_cases, run_cmd
 
 def add_arguments(parser):
@@ -45,18 +46,29 @@ def add_arguments(parser):
         help='Disables cwd\'ing to a temporary working directory.')
 
     parser.add_argument(
-        '--coverage', action='store_true',
-        help='EXPERIMENTAL: adds flags to GHDL for generating gcov-style code '
-        'coverage data. This only works when GHDL is compiled with the GCC '
-        'backend! Combine with --no-tempdir to prevent the output from being '
-        'deleted when vhdeps terminates.')
+        '-c', '--coverage', nargs='?', action='append',
+        choices=['gcov', 'lcov', 'html'],
+        help='Adds flags to GHDL for generating gcov-style code coverage '
+        'data. This only works when GHDL is compiled with the GCC backend! '
+        'The coverage files are moved to the directory specified by '
+        '--cover-dir, or the working directory if this is not specified. '
+        'The file format written depends on the parameter to this switch: '
+        '"gcov" copies the .gcno and .gcda files, "lcov" runs lcov in '
+        'addition to produce coverage.info and copies that instead, and '
+        '"html" calls genhtml to generate HTML output and copies that '
+        'instead. Default is "gcov".')
+
+    parser.add_argument(
+        '-d', '--cover-dir', action='store', default=None,
+        help='Specifies the directory to which the coverage data generated '
+        'by -c/--coverage is copied. Defaults to "./coverage".')
 
     parser.add_argument(
         '-j', '--jobs', metavar='N', nargs='?', action='append', type=int,
         help='Runs the test cases in parallel with the given number of '
         'parallel GHDL runs, or infinite if no argument is specified.')
 
-def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=False, **_):
+def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_):
     """Returns a three-tuple of the analyze, elaborate, and run commands for
     GHDL in plumbum form."""
 
@@ -134,24 +146,30 @@ def _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run):
         return 2, ' * FAILED  %s' % test_case.unit
     return 0, ' * PASSED  %s' % test_case.unit
 
-def _run(vhd_list, output_file, jobs=None, **kwargs):
+def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwargs):
     """Runs this backend in the current working directory."""
 
     # Construct the plumbum command representations of the three GHDL commands
     # we need, complete with all flags that are not file-dependent.
-    cmds = _get_ghdl_cmds(vhd_list, **kwargs)
+    cmds = _get_ghdl_cmds(vhd_list, coverage=coverage, **kwargs)
     ghdl_analyze, ghdl_elaborate, ghdl_run = cmds
 
     # Analyze all files with GHDL.
     output_file.write('Analyzing...\n')
     failed = False
     for vhd in vhd_list.order:
-        exit_code, *_ = run_cmd(
+        exit_code, _, stderr = run_cmd(
             output_file,
             ghdl_analyze,
             '--work=%s' % vhd.lib,
             vhd.fname)
         if exit_code != 0:
+            if 'unknown option \'-Wc' in stderr:
+                output_file.write(
+                    'GHDL did not understand -Wc option! You need a version '
+                    'of GHDL that was\ncompiled with the GCC backend for this '
+                    'combination of command-line options.\n')
+                return 2
             failed = True
     if failed:
         output_file.write('Analysis failed!\n')
@@ -235,9 +253,36 @@ def _run(vhd_list, output_file, jobs=None, **kwargs):
         output_file.write('Test suite FAILED\n')
     else:
         output_file.write('Test suite PASSED\n')
+
+    # Copy/interpret coverage data.
+    if coverage:
+        from plumbum import local
+        coverage = coverage[-1]
+        if coverage is None:
+            coverage = 'gcov'
+
+        local['mkdir']('-p', cover_dir)
+
+        if coverage == 'gcov':
+            copy = local['cp']
+            if cover_dir != os.getcwd():
+                for fname in os.listdir(os.getcwd()):
+                    if fname.endswith('.gcda') or fname.endswith('.gcno'):
+                        copy('-f', '-t', cover_dir, fname)
+
+        elif coverage == 'lcov':
+            local['lcov']('-c', '-d', '.', '-o', cover_dir + os.sep + 'coverage.info')
+
+        elif coverage == 'html':
+            local['lcov']('-c', '-d', '.', '-o', 'coverage.info')
+            local['genhtml']('-o', cover_dir, 'coverage.info')
+
+        else:
+            raise NotImplementedError('coverage output type %s' % coverage)
+
     return int(failed)
 
-def run(vhd_list, output_file, no_tempdir=False, **kwargs):
+def run(vhd_list, output_file, no_tempdir=False, cover_dir=None, **kwargs):
     """Runs this backend."""
     try:
         from plumbum import local
@@ -245,8 +290,17 @@ def run(vhd_list, output_file, no_tempdir=False, **kwargs):
         raise ImportError('the GHDL backend requires plumbum to be installed '
                           '(pip3 install plumbum).')
 
+    # Set the default value for the coverage output directory before moving to
+    # a temporary working directory.
+    if cover_dir is None:
+        cover_dir = os.getcwd() + os.sep + 'coverage'
+    else:
+        cover_dir = os.path.realpath(cover_dir)
+
+    # Run this backend in a temporary working directory unless the user
+    # specifically requested that we don't do that.
     if no_tempdir:
-        return _run(vhd_list, output_file, **kwargs)
+        return _run(vhd_list, output_file, cover_dir=cover_dir, **kwargs)
     with tempfile.TemporaryDirectory() as tempdir:
         with local.cwd(tempdir):
-            return _run(vhd_list, output_file, **kwargs)
+            return _run(vhd_list, output_file, cover_dir=cover_dir, **kwargs)
