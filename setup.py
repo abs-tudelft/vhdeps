@@ -3,6 +3,7 @@
 import os
 import re
 from setuptools import setup
+from setuptools.command.test import test as TestCommand
 
 def read(fname):
     with open(os.path.join(os.path.dirname(__file__), fname)) as fildes:
@@ -15,6 +16,17 @@ def get_version():
             if match:
                 return match.group(1)
     raise ValueError('Could not find package version')
+
+class NoseTestCommand(TestCommand):
+    def finalize_options(self):
+        TestCommand.finalize_options(self)
+        self.test_args = []
+        self.test_suite = True
+
+    def run_tests(self):
+        # Run nose ensuring that argv simulates running nosetests directly
+        import nose
+        nose.run_exit(argv=['nosetests'])
 
 setup(
     name = "vhdeps",
@@ -44,4 +56,6 @@ setup(
     python_requires = '>=3',
     install_requires = ['plumbum'],
     setup_requires = ['setuptools-lint', 'pylint'],
+    tests_require = ['nose', 'coverage'],
+    cmdclass = {'test': NoseTestCommand},
 )

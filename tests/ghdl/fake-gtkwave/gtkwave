@@ -1,0 +1,5 @@
+#!/usr/bin/env python3
+import sys
+import os
+with open(os.environ['GTKWAVE_CMD_LINE'], 'w') as f:
+    print('gtkwave ' + ' '.join(sys.argv[1:]), file=f)

@@ -21,7 +21,7 @@ import sys
 import os
 import argparse
 import vhdeps.vhdl as vhdl
-import vhdeps.target as targets
+import vhdeps.target as target_mod
 
 __version__ = '0.0.4'
 
@@ -144,8 +144,7 @@ def run_cli(args=None):
 
     # Parse the command line.
     if args is None:
-        args = sys.argv
-    args = args[1:]
+        args = sys.argv[1:]
     if '--' in args:
         index = args.index('--')
         target_args = args[index+1:]
@@ -157,7 +156,7 @@ def run_cli(args=None):
     # --style. --help also falls within this category, but argparse handles
     # that internally.
     if args.targets:
-        targets.print_help()
+        target_mod.print_help()
         return 0
 
     if args.style:
@@ -172,14 +171,14 @@ def run_cli(args=None):
         print('Error: no target specified.', file=sys.stderr)
         parser.print_usage()
         return 1
-    target = targets.get_target(args.target)
+    target = target_mod.get_target(args.target)
     if target is None:
         print('Unknown target "%s".' % args.target, file=sys.stderr)
         print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
         return 1
 
     # Parse the target's arguments, if any.
-    target_args = targets.get_argument_parser(args.target).parse_args(target_args)
+    target_args = target_mod.get_argument_parser(args.target).parse_args(target_args)
 
     # Construct the list of VHDL files.
     vhd_list = vhdl.VhdList(
