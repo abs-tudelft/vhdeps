@@ -32,7 +32,7 @@ def run_cli(args=None):
     caught."""
 
     parser = argparse.ArgumentParser(
-        usage='vhdeps [flags] <sim/synth target> [toplevel ...] [--] [target-args]',
+        usage='vhdeps <target> [entities...] [flags...] [--] [target-flags...]',
         description='This script is a VHDL dependency analyzer. Given a list '
         'of VHDL files and/or directories containing VHDL files, it can '
         'generate a compile order and output this in various formats, such '
