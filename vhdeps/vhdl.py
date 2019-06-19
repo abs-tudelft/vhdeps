@@ -110,24 +110,24 @@ class VhdFile:
         sim_timeout = [match.group(1)for match in self.TIMEOUT.finditer(contents)]
         contents = ' '.join((line.split('--')[0] for line in contents.split('\n')))
 
-        self.entity_defs = {
+        self.entity_defs = sorted({
             match.group(1)
-            for match in self.ENTITY_DEF.finditer(contents)}
-        self.entity_uses = {
+            for match in self.ENTITY_DEF.finditer(contents)})
+        self.entity_uses = sorted({
             (match.group(2), match.group(3))
-            for match in self.ENTITY_USE.finditer(contents)}
-        self.component_defs = {
+            for match in self.ENTITY_USE.finditer(contents)})
+        self.component_defs = sorted({
             match.group(1)
-            for match in self.COMPONENT_DEF.finditer(contents)}
-        self.component_uses = {
+            for match in self.COMPONENT_DEF.finditer(contents)})
+        self.component_uses = sorted({
             match.group(1)
-            for match in self.COMPONENT_USE.finditer(contents)}
-        self.package_defs = {
+            for match in self.COMPONENT_USE.finditer(contents)})
+        self.package_defs = sorted({
             match.group(1)
-            for match in self.PACKAGE_DEF.finditer(contents)}
-        self.package_uses = {
+            for match in self.PACKAGE_DEF.finditer(contents)})
+        self.package_uses = sorted({
             (match.group(1), match.group(2))
-            for match in self.PACKAGE_USE.finditer(contents)}
+            for match in self.PACKAGE_USE.finditer(contents)})
 
         # If this file contains a single entity or package, record its name.
         if len(self.entity_defs) + len(self.package_defs) != 1:
@@ -172,6 +172,10 @@ class VhdFile:
         compiled before this file. Weak dependencies (`False`) can be compiled
         at any time during the compilation process."""
 
+        # Don't run again if we've already resolved our dependencies.
+        if self.before is not None:
+            return
+
         if ignore_libs is None:
             ignore_libs = {'ieee', 'std'}
 
@@ -189,7 +193,7 @@ class VhdFile:
                 if not lib or lib == 'work':
                     lib = self.lib
                 try:
-                    vhd = resolver(unit_type, lib, name, True)
+                    vhd = resolver(unit_type, lib, name)
                 except ResolutionError as exc:
                     raise ResolutionError(
                         'while resolving %s %s.%s in %s:\n%s' %
@@ -216,7 +220,7 @@ class VhdFile:
 
                 # Look for the accompanying entity.
                 try:
-                    self.anywhere.add(resolver('entity', lib, comp, False))
+                    self.anywhere.add(resolver('entity', lib, comp))
                 except ResolutionError as exc:
                     if not allow_bb:
                         raise ResolutionError('black box: %s' % exc)
@@ -253,28 +257,8 @@ class VhdFile:
         except TypeError:
             return False
 
-    # Debugging stuff.
-    def dump(self):
-        """Dumps information about this object to stdout."""
-        print('%s (%s):' % (self.fname, self.lib))
-        print(' - define:')
-        for ent in self.entity_defs:
-            print('    * entity %s' % ent)
-        for pkg in self.package_defs:
-            print('    * package %s' % pkg)
-        for comp in self.component_defs:
-            print('    * component %s' % comp)
-        print(' - use:')
-        for ent in self.entity_uses:
-            print('    * entity %s' % ent)
-        for pkg in self.package_uses:
-            print('    * package %s' % pkg)
-        for comp in self.component_uses:
-            print('    * component %s' % comp)
-        print()
-
     def __str__(self):
-        return os.path.basename(self.fname)
+        return self.fname
 
     __repr__ = __str__
 
@@ -320,20 +304,7 @@ class VhdList:
         self.files.add(vhd)
         return vhd
 
-    def move_to_front(self, vhd, stack=()):
-        """Moves the specified `VhdFile` object to the front of the compile
-        order, taking its dependencies along with it. The file must already
-        have been compiled and must already have had its dependencies
-        resolved.."""
-        if vhd in stack:
-            raise ResolutionError('circular dependency:\n - ' + '\n - '.join(stack))
-        self.order.remove(vhd)
-        self.order.appendleft(vhd)
-        stack += (vhd,)
-        for vhd_dep in sorted(vhd.before, key=str):
-            self.move_to_front(vhd_dep, stack)
-
-    def is_file_filtered_out(self, vhd):
+    def _is_file_filtered_out(self, vhd):
         """Returns a non-empty string when the given `VhdFile` is filtered out
         by this list's configuration with the reason for it being filtered out,
         or `None` if the file is matches all filters."""
@@ -347,16 +318,13 @@ class VhdList:
                     return '%s is not compatible with VHDL %s' % (vhd, self.required_version)
         return None
 
-    def resolve_design_unit(self, unit_type, lib, name, strong_dependency):
-        """Resolves the requested design unit to a file. Adds the file to
-        the compilation list and resolves its dependencies recusively if the
-        file is not in the list yet. If `strong_dependency` is set, the file
-        is moved to the front of the compilation list in either case, followed
-        by the files it depends strongly upon being moved to the front
-        recursively. The design unit is identified by `unit_type`, which must
-        be `'entity'` or `'package'`, and its library and VHDL identifier.
-        The matching `VhdFile` is returned if the resolution succeeds. A
-        `ResolutionError` is raised otherwise."""
+    def _resolve_design_unit(self, unit_type, lib, name):
+        """Resolves the requested design unit to a file. Also resolves its
+        dependencies recusively if the file is not in the list yet. The design
+        unit is identified by `unit_type`, which must be `'entity'` or
+        `'package'`, and its library and VHDL identifier. The matching
+        `VhdFile` is returned if the resolution succeeds. A `ResolutionError`
+        is raised otherwise."""
 
         # Construct identification tuple for this design unit.
         ident = (unit_type, lib, name)
@@ -371,7 +339,7 @@ class VhdList:
             filtered_out = []
             for vhd in self.files:
                 if vhd.lib == lib and name in getattr(vhd, unit_type + '_defs'):
-                    filter_reason = self.is_file_filtered_out(vhd)
+                    filter_reason = self._is_file_filtered_out(vhd)
                     if filter_reason:
                         filtered_out.append(filter_reason)
                     else:
@@ -417,21 +385,50 @@ class VhdList:
             # Store the design unit mapping.
             self.design_units[ident] = vhd
 
-            # Resolve the file if it hasn't been resolved yet.
-            if vhd not in self.order:
-                self.order.appendleft(vhd)
-                vhd.resolve_dependencies(self.resolve_design_unit)
+            # Resolve this file's dependencies recursively.
+            vhd.resolve_dependencies(self._resolve_design_unit)
 
-                # This file and its dependencies are already at the front of
-                # the compile order, so we don't need to move it to the front
-                # again even if there was a strong dependency.
-                return vhd
+        return vhd
+
+    def _move_to_front(self, vhd, stack=()):
+        """Moves the specified `VhdFile` object to the front of the compile
+        order, taking its dependencies along with it. The file must already
+        have been compiled and must already have had its dependencies
+        resolved.."""
+        if vhd in stack:
+            raise ResolutionError('circular dependency:\n - ' + '\n - '.join(map(str, stack)))
+        self.order.remove(vhd)
+        self.order.appendleft(vhd)
+        stack += (vhd,)
+        for vhd_dep in sorted(vhd.before, key=str):
+            self._move_to_front(vhd_dep, stack)
+
+    def _add_to_compile_order(self, vhd, strong_dependency=False):
+        """Adds the given resolved VHDL file to the compile order list if it is
+        not in the list yet. If it was already in the list but this function
+        was called due to a strong dependency of another file we just added
+        (`strong_dependency` is set), the file is moved to the front of the
+        compilation list, along with all its strong dependencies recursively.
+        If this causes a cycle, a `ResolutionError` is raised."""
+
+        # Resolve the file if it hasn't been resolved yet.
+        if vhd not in self.order:
+            self.order.appendleft(vhd)
+            for dependency in sorted(vhd.before, key=str):
+                self._add_to_compile_order(dependency, True)
+            for dependency in sorted(vhd.anywhere, key=str):
+                self._add_to_compile_order(dependency, False)
+
+            # This file and its dependencies are already at the front of
+            # the compile order, so we don't need to move it to the front
+            # again even if there was a strong dependency.
+            return vhd
 
         # Move the file to the front of the compile order list if the file
         # whose dependencies were being resolved by the caller strongly depends
         # on it. If we just added the file we don't need to do this.
         if strong_dependency:
-            self.move_to_front(vhd)
+            self._move_to_front(vhd)
 
         return vhd
 
@@ -447,7 +444,7 @@ class VhdList:
         # out.
         entities = set()
         for vhd in self.files:
-            if not self.is_file_filtered_out(vhd):
+            if not self._is_file_filtered_out(vhd):
                 entities.update(((vhd.lib, name) for name in vhd.entity_defs))
 
         # If the user specified a list of required entities, filter out
@@ -473,8 +470,11 @@ class VhdList:
         entities = reversed(sorted(entities))
 
         # Resolve all the entities that we found.
-        for lib, name in entities:
-            self.resolve_design_unit('entity', lib, name, False)
+        units = [self._resolve_design_unit('entity', lib, name) for lib, name in entities]
+
+        # Add the entities to the compile order.
+        for unit in units:
+            self._add_to_compile_order(unit)
 
         # Store which files are not required by anything else and are thus
         # potential toplevels. This list is sorted by the filenames to be
@@ -486,9 +486,3 @@ class VhdList:
                     break
             else:
                 self.top.append(vhd)
-
-    # Debugging stuff.
-    def dump(self):
-        """Dumps information about all the VHDL files in this list to stdout."""
-        for vhd in self.files:
-            vhd.dump()
