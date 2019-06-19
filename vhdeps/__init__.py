@@ -138,6 +138,10 @@ def run_cli(args=None):
         help='Print information about the VHDL style rules enforced by '
         '--strict.')
 
+    parser.add_argument(
+        '--vhdeps-version', action='version', version='vhdeps ' + __version__,
+        help='Prints the current version of vhdeps and exits.')
+
     # Parse the command line.
     if args is None:
         args = sys.argv
