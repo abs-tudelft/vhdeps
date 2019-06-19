@@ -68,6 +68,18 @@ def add_arguments(parser):
         help='Runs the test cases in parallel with the given number of '
         'parallel GHDL runs, or infinite if no argument is specified.')
 
+    parser.add_argument(
+        '-w', '--vcd-dir', action='store', default=None,
+        help='When specified, waveform data will be captured (*.vcd files) '
+        'to the specified output directory.')
+
+    parser.add_argument(
+        '--gui', action='store_true',
+        help='When specified, vhdeps will launch gtkwave after the test '
+        'case(s) complete. If there is a single test case, gtkwave is opened '
+        'regardless of whether it passed or not. If there are multiple test '
+        'cases, gtkwave is launched for the first failure.')
+
 def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_):
     """Returns a three-tuple of the analyze, elaborate, and run commands for
     GHDL in plumbum form."""
@@ -120,7 +132,7 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_
 
     return ghdl_analyze, ghdl_elaborate, ghdl_run
 
-def _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run):
+def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
     """Runs the given test case with the given GHDL commands, writing the
     results to `output_file`. Returns a two-tuple of an exit code (higher is
     a worse result, 0 is pass) and a message for the summary."""
@@ -132,22 +144,33 @@ def _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run):
         test_case.unit)
     if exit_code != 0:
         output_file.write('Elaboration for %s failed!\n' % test_case.unit)
-        return 3, ' * ERROR   %s' % test_case.unit
+        return 3, test_case, None
 
     output_file.write('Running %s...\n' % test_case.unit)
+    vcd_file = None
+    vcd_switch = []
+    if vcd_dir is not None:
+        vcd_file = '%s/%s.%s.vcd' % (
+            vcd_dir, test_case.lib, test_case.unit)
+        vcd_switch.append('--vcd=%s' % vcd_file)
     exit_code, stdout, *_ = run_cmd(
         output_file,
         ghdl_run,
         '--work=' + test_case.lib, test_case.unit,
-        '--stop-time=' + test_case.get_timeout().replace(' ', ''))
+        '--stop-time=' + test_case.get_timeout().replace(' ', ''),
+        *vcd_switch)
     if 'simulation stopped by --stop-time' in stdout:
-        return 1, ' * TIMEOUT %s' % test_case.unit
-    if exit_code != 0:
-        return 2, ' * FAILED  %s' % test_case.unit
-    return 0, ' * PASSED  %s' % test_case.unit
+        code = 1
+    elif exit_code != 0:
+        code = 2
+    else:
+        code = 0
+    return code, test_case, vcd_file
 
-def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwargs):
+def _run(vhd_list, output_file, jobs=None, coverage=None,
+         cover_dir=None, vcd_dir=None, gui=False, **kwargs):
     """Runs this backend in the current working directory."""
+    from plumbum import local, FG
 
     # Construct the plumbum command representations of the three GHDL commands
     # we need, complete with all flags that are not file-dependent.
@@ -178,12 +201,22 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
     # Construct a list of test cases.
     test_cases = get_test_cases(vhd_list, **kwargs)
 
+    if vcd_dir is not None:
+        local['mkdir']('-p', vcd_dir)
+
+    # If the user did not specifically request VCD files but did request the
+    # GUI to be opened, default to saving the VCD files in the working
+    # directory (which is normally a temporary directory).
+    if gui and vcd_dir is None:
+        vcd_dir = '.'
+
     # Run the test cases.
     if jobs is None:
 
         # Run sequentially.
         results = [
-            _run_test_case(output_file, test_case, ghdl_elaborate, ghdl_run)
+            _run_test_case(
+                output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run)
             for test_case in test_cases]
 
     else:
@@ -202,7 +235,8 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
                 while True:
                     test_case = pending_test_cases.get_nowait()
                     stdout = io.StringIO()
-                    result = _run_test_case(stdout, test_case, ghdl_elaborate, ghdl_run)
+                    result = _run_test_case(
+                        stdout, test_case, vcd_dir, ghdl_elaborate, ghdl_run)
                     with output_lock:
                         output_file.write(stdout.getvalue())
                     result_queue.put(result)
@@ -247,8 +281,15 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
     failed = any(map(lambda ent: ent[0], results))
 
     # Print a summary of the test case results.
-    output_file.write(
-        '\nFinal summary:\n' + '\n'.join(map(lambda ent: ent[1], sorted(results))) + '\n')
+    output_file.write('\nFinal summary:\n')
+    for code, test_case, _ in sorted(results):
+        code = {
+            0: 'PASSED ',
+            1: 'TIMEOUT',
+            2: 'FAILED ',
+            3: 'ERROR  ',
+        }[code]
+        output_file.write(' * %s %s\n' % (code, test_case.unit))
     if failed:
         output_file.write('Test suite FAILED\n')
     else:
@@ -256,7 +297,6 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
 
     # Copy/interpret coverage data.
     if coverage:
-        from plumbum import local
         coverage = coverage[-1]
         if coverage is None:
             coverage = 'gcov'
@@ -280,9 +320,24 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
         else:
             raise NotImplementedError('coverage output type %s' % coverage)
 
+    # Open GUI if requested.
+    if gui:
+        vcd_file = None
+        if len(results) == 1:
+            vcd_file = results[0][2]
+        else:
+            for code, _, vcd in sorted(results):
+                if code and vcd:
+                    vcd_file = vcd
+                    break
+        if vcd_file is None:
+            print('No data available to open gtkwave for.')
+        else:
+            local['gtkwave'][vcd_file] & FG #pylint: disable=W0104
+
     return int(failed)
 
-def run(vhd_list, output_file, no_tempdir=False, cover_dir=None, **kwargs):
+def run(vhd_list, output_file, no_tempdir=False, cover_dir=None, vcd_dir=None, **kwargs):
     """Runs this backend."""
     try:
         from plumbum import local
@@ -296,11 +351,18 @@ def run(vhd_list, output_file, no_tempdir=False, cover_dir=None, **kwargs):
         cover_dir = os.getcwd() + os.sep + 'coverage'
     else:
         cover_dir = os.path.realpath(cover_dir)
+    kwargs['cover_dir'] = cover_dir
+
+    # Convert the waveform output directory to an absolute path so it is not
+    # affected by running from a temporary directory.
+    if vcd_dir is not None:
+        vcd_dir = os.path.realpath(vcd_dir)
+    kwargs['vcd_dir'] = vcd_dir
 
     # Run this backend in a temporary working directory unless the user
     # specifically requested that we don't do that.
     if no_tempdir:
-        return _run(vhd_list, output_file, cover_dir=cover_dir, **kwargs)
+        return _run(vhd_list, output_file, **kwargs)
     with tempfile.TemporaryDirectory() as tempdir:
         with local.cwd(tempdir):
-            return _run(vhd_list, output_file, cover_dir=cover_dir, **kwargs)
+            return _run(vhd_list, output_file, **kwargs)
