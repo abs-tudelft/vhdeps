@@ -155,9 +155,9 @@ def _run(vhd_list, output_file, jobs=None, coverage=None, cover_dir=None, **kwar
     ghdl_analyze, ghdl_elaborate, ghdl_run = cmds
 
     # Analyze all files with GHDL.
-    output_file.write('Analyzing...\n')
     failed = False
-    for vhd in vhd_list.order:
+    for index, vhd in enumerate(vhd_list.order):
+        output_file.write('Analyzing (%d/%d) %s...\n' % (index+1, len(vhd_list.order), vhd.fname))
         exit_code, _, stderr = run_cmd(
             output_file,
             ghdl_analyze,
