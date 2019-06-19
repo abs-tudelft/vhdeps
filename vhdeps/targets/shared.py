@@ -40,6 +40,11 @@ def get_test_cases(vhd_list, pattern=None, **_):
         pattern = ['*_tc']
     test_cases = []
     for top in vhd_list.top:
+        if top.unit is None:
+            raise NotImplementedError(
+                'vhdeps\' test case runners currently do not support having '
+                'multiple test cases per VHDL files.\nThe offending file is '
+                '"%s".' % top.fname)
         include = False
         for pat in pattern:
             target = top.unit
