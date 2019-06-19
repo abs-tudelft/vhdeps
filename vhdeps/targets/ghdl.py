@@ -98,10 +98,9 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_
         raise ValueError('GHDL does not support mixing VHDL versions. Use the '
                          '-v flag to force one. The following versions were '
                          'detected: ' + ', '.join(map(str, sorted(versions))))
+    version = 2008
     if versions:
         version = next(iter(versions))
-    else:
-        version = 2008
 
     # Convert the version number to a GHDL flag.
     supported_versions = {
