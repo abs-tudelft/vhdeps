@@ -1,0 +1,39 @@
+$date
+  Wed Jun 19 10:58:18 2019
+$end
+$version
+  GHDL v0
+$end
+$timescale
+  1 fs
+$end
+$scope module standard $end
+$upscope $end
+$scope module textio $end
+$upscope $end
+$scope module std_logic_1164 $end
+$upscope $end
+$scope module numeric_std $end
+$upscope $end
+$scope module math_real $end
+$upscope $end
+$scope module testcase_pkg $end
+$var reg 1 ! test $end
+$var reg 1 " tc_model_init $end
+$upscope $end
+$scope module simdatacomms_pkg $end
+$upscope $end
+$scope module simdatacomms_tc $end
+$upscope $end
+$enddefinitions $end
+#0
+1!
+Z"
+#500000000
+#1000000000
+#2000000000
+#3000000000
+#4000000000
+#5000000000
+#6000000000
+#7000000000
