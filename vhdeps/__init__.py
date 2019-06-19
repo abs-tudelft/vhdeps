@@ -200,9 +200,11 @@ def run_cli(args=None):
                 lib = arg[-2] if len(arg) >= 2 else 'work'
                 override_version = int(arg[-3]) if len(arg) >= 3 else None
                 if os.path.isdir(fname):
-                    vhd_list.add_dir(fname, lib, override_version=override_version, **kwargs)
+                    vhd_list.add_dir(fname, lib=lib, override_version=override_version, **kwargs)
+                elif os.path.isfile(fname):
+                    vhd_list.add_file(fname, lib=lib, override_version=override_version, **kwargs)
                 else:
-                    vhd_list.add_file(fname, lib, override_version=override_version, **kwargs)
+                    raise ValueError('file/directory not found: "%s"' % fname)
 
         # Default to including the working directory if no includes are specified.
         if not args.include and not args.strict and not args.external:
