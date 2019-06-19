@@ -142,43 +142,48 @@ def run_cli(args=None):
         '--vhdeps-version', action='version', version='vhdeps ' + __version__,
         help='Prints the current version of vhdeps and exits.')
 
-    # Parse the command line.
-    if args is None:
-        args = sys.argv[1:]
-    if '--' in args:
-        index = args.index('--')
-        target_args = args[index+1:]
-        args = parser.parse_args(args[:index])
-    else:
-        args, target_args = parser.parse_known_args(args)
+    try:
 
-    # Print additional information and exit if requested using --targets or
-    # --style. --help also falls within this category, but argparse handles
-    # that internally.
-    if args.targets:
-        target_mod.print_help()
-        return 0
+        # Parse the command line.
+        if args is None:
+            args = sys.argv[1:]
+        if '--' in args:
+            index = args.index('--')
+            target_args = args[index+1:]
+            args = parser.parse_args(args[:index])
+        else:
+            args, target_args = parser.parse_known_args(args)
 
-    if args.style:
-        print('The following style rules are enforced by -I/--strict:')
-        print(' - Each VHDL file must define exactly one entity or exactly one package.')
-        print(' - VHDL package names must use the _pkg suffix.')
-        print(' - The filename must match the name of the VHDL entity/package.')
-        return 0
+        # Print additional information and exit if requested using --targets or
+        # --style. --help also falls within this category, but argparse handles
+        # that internally.
+        if args.targets:
+            target_mod.print_help()
+            return 0
 
-    # Select the target.
-    if args.target is None:
-        print('Error: no target specified.', file=sys.stderr)
-        parser.print_usage()
-        return 1
-    target = target_mod.get_target(args.target)
-    if target is None:
-        print('Unknown target "%s".' % args.target, file=sys.stderr)
-        print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
-        return 1
+        if args.style:
+            print('The following style rules are enforced by -I/--strict:')
+            print(' - Each VHDL file must define exactly one entity or exactly one package.')
+            print(' - VHDL package names must use the _pkg suffix.')
+            print(' - The filename must match the name of the VHDL entity/package.')
+            return 0
 
-    # Parse the target's arguments, if any.
-    target_args = target_mod.get_argument_parser(args.target).parse_args(target_args)
+        # Select the target.
+        if args.target is None:
+            print('Error: no target specified.', file=sys.stderr)
+            parser.print_usage()
+            return 1
+        target = target_mod.get_target(args.target)
+        if target is None:
+            print('Error: unknown target "%s".' % args.target, file=sys.stderr)
+            print('Specify --targets to get a listing of all supported targets.', file=sys.stderr)
+            return 1
+
+        # Parse the target's arguments, if any.
+        target_args = target_mod.get_argument_parser(args.target).parse_args(target_args)
+
+    except SystemExit as exc:
+        return exc.code
 
     # Construct the list of VHDL files.
     vhd_list = vhdl.VhdList(
@@ -214,7 +219,7 @@ def run_cli(args=None):
 
         if not vhd_list.order:
             print('Error: no VHDL files found.', file=sys.stderr)
-            sys.exit(1)
+            return 1
 
         # Run the selected target with the selected output file or stdout.
         if args.outfile is None:
