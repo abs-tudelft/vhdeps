@@ -23,6 +23,8 @@ import argparse
 import vhdeps.vhdl as vhdl
 import vhdeps.target as targets
 
+__version__ = '0.0.3'
+
 def run_cli(args=None):
     """Runs the vhdeps CLI. The command-line arguments are taken from `args`
     when specified, or `sys.argv` by default. The return value is the exit code

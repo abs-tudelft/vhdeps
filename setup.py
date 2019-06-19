@@ -1,15 +1,24 @@
 #!/usr/bin/env python3
 
 import os
+import re
 from setuptools import setup
 
 def read(fname):
-    with open(os.path.join(os.path.dirname(__file__), fname)) as f:
-        return f.read()
+    with open(os.path.join(os.path.dirname(__file__), fname)) as fildes:
+        return fildes.read()
+
+def get_version():
+    with open('vhdeps/__init__.py', 'r') as fildes:
+        for line in fildes:
+            match = re.match("__version__ = '([^']+)'\n", line)
+            if match:
+                return match.group(1)
+    raise ValueError('Could not find package version')
 
 setup(
     name = "vhdeps",
-    version = "0.0.3",
+    version = get_version(),
     author = "Jeroen van Straten",
     author_email = "j.vanstraten-1@tudelft.nl",
     description = (
