@@ -13,6 +13,7 @@ jobs:
     displayName: Test
   - script: |
       python3 setup.py lint
+    displayName: Lint
   - script: |
       python3 setup.py sdist
     displayName: Source
