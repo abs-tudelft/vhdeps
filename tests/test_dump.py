@@ -184,8 +184,8 @@ class TestDump(TestCase):
         code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/component-circle')
         self.assertEquals(code, 0)
         self.assertEquals(out, '\n'.join([
-            'dep work 2008 /ssddata/vhdeps/tests/complex/component-circle/a.vhd',
-            'top work 2008 /ssddata/vhdeps/tests/complex/component-circle/b.vhd',
+            'dep work 2008 ' + workdir + '/complex/component-circle/a.vhd',
+            'top work 2008 ' + workdir + '/complex/component-circle/b.vhd',
         ]) + '\n')
 
     def test_entity_circle(self):
