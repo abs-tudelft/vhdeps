@@ -23,12 +23,11 @@ class NoseTestCommand(TestCommand):
 
 class BuildWithVersionCommand(BuildCommand):
     def run(self):
+        BuildCommand.run(self)
         if not self.dry_run:
             version_fname = os.path.join(self.build_lib, 'vhdeps', 'version.py')
             with open(version_fname, 'w') as fildes:
                 fildes.write('__version__ = """' + self.distribution.metadata.version + '"""\n')
-
-        BuildCommand.run(self)
 
 setup(
     name = 'vhdeps',
