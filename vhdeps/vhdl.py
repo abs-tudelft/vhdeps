@@ -198,7 +198,20 @@ class VhdFile:
                     raise ResolutionError(
                         'while resolving %s %s.%s in %s:\n%s' %
                         (unit_type, lib, name, self, exc))
+
+                # If the resolved file is ourself, assume that the design units
+                # are listed in the correct order; if they're not, there's
+                # nothing vhdeps can do about it, anyway. Either way, the
+                # dependency does not matter for our compile order analysis, so
+                # we ignore it.
+                if vhd is self:
+                    continue
+
+                # Make sure the dependency is compiled before us.
                 self.before.add(vhd)
+
+                # Included packages can define components. So, when we look for
+                # components later, make sure we look in this file as well.
                 if unit_type == 'package':
                     component_decl_vhds.append(vhd)
 
@@ -218,7 +231,10 @@ class VhdFile:
                         'could not find component declaration for %s within %s' %
                         (comp, ', '.join(map(str, component_decl_vhds))))
 
-                # Look for the accompanying entity.
+                # Look for the accompanying entity and make sure it is compiled
+                # at some point. If the component was defined in a file
+                # included through -X (allow_bb == True), we accept that the
+                # component is a black box if we can't find the entity.
                 try:
                     self.anywhere.add(resolver('entity', lib, comp))
                 except ResolutionError as exc:
