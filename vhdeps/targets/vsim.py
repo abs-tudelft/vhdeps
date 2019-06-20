@@ -389,20 +389,13 @@ def _write_tcl(vhd_list, tcl_file, **kwargs):
     else:
         tcl_file.write('regression\n')
 
-def _run(vhd_list, output_file, tcl=False, gui=False, **kwargs):
+def _run(vhd_list, output_file, gui=False, **kwargs):
     """Runs this backend in the current working directory."""
-    if tcl:
-        _write_tcl(vhd_list, output_file, **kwargs)
-        return 0
-
     try:
         from plumbum.cmd import vsim
     except ImportError:
         raise ImportError('no vsim-compatible simulator was found.')
-    try:
-        from plumbum.cmd import cat
-    except ImportError:
-        raise ImportError('missing cat command.')
+    from plumbum import local
 
     # Write the TCL file to a temporary file.
     with open('vsim.do', 'w') as tcl_file:
@@ -412,19 +405,25 @@ def _run(vhd_list, output_file, tcl=False, gui=False, **kwargs):
     if gui:
         cmd = vsim['-do', 'vsim.do']
     else:
-        cmd = cat['vsim.do'] | vsim
+        cmd = local['cat']['vsim.do'] | vsim
     exit_code, *_ = run_cmd(output_file, cmd)
 
     # Forward vsim's exit code.
     return exit_code
 
-def run(vhd_list, output_file, no_tempdir=False, **kwargs):
+def run(vhd_list, output_file, tcl=False, no_tempdir=False, **kwargs):
     """Runs this backend."""
+
+    # If we just need to output TCL, short-circuit the rest of the backend.
+    if tcl:
+        _write_tcl(vhd_list, output_file, **kwargs)
+        return 0
+
     try:
         from plumbum import local
     except ImportError:
         raise ImportError('the vsim backend requires plumbum to be installed '
-                          '(pip3 install plumbum).')
+                          'to run vsim (pip3 install plumbum).')
 
     if no_tempdir:
         return _run(vhd_list, output_file, **kwargs)

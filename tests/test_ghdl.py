@@ -106,7 +106,7 @@ class TestGhdlSimple(TestCase):
 class TestGhdlSpecific(TestCase):
 
     def test_multi_version(self):
-        code, out, err = run_vhdeps('ghdl', '-i', workdir+'/ghdl/multi-version')
+        code, out, err = run_vhdeps('ghdl', '-i', workdir+'/simple/multi-version')
         self.assertEquals(code, 1)
         self.assertTrue('GHDL does not support mixing VHDL versions.' in err)
 
