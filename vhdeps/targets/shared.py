@@ -43,7 +43,7 @@ def get_test_cases(vhd_list, pattern=None, **_):
         if top.unit is None:
             raise NotImplementedError(
                 'vhdeps\' test case runners currently do not support having '
-                'multiple test cases per VHDL files.\nThe offending file is '
+                'multiple test cases per VHDL file.\nThe offending file is '
                 '"%s".' % top.fname)
         include = False
         for pat in pattern:
