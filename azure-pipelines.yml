@@ -1,0 +1,37 @@
+jobs:
+
+- job:
+  pool:
+    vmImage: ubuntu-latest
+  container: abstudelft/ghdl-gcc-python:latest
+  steps:
+  - script: |
+      python3 setup.py build 
+    displayName: Build
+  - script: |
+      python3 setup.py test
+    displayName: Test
+  - script: |
+      python3 setup.py lint
+    displayName: Lint
+  - script: |
+      python3 setup.py sdist
+    displayName: Source
+  - script: |
+      python3 setup.py bdist_wheel
+    displayName: Wheel
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '**/nosetests.xml'
+  - task: UseDotNet@2
+    inputs:
+      version: 2.x
+  - task: PublishCodeCoverageResults@1
+    inputs:
+      codeCoverageTool: cobertura
+      summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  - script: |
+      bash <(curl https://codecov.io/bash) -f coverage.xml
+    env:
+      CODECOV_TOKEN: $(codecov)
+    displayName: codecov
