@@ -222,3 +222,28 @@ These rules are:
  - Each VHDL file must define exactly one entity or exactly one package.
  - VHDL package names must use the `_pkg` suffix.
  - The filename must match the name of the VHDL entity/package.
+
+
+Contributing
+------------
+
+Pull requests are welcome. Before opening a PR, check that all tests succeed
+(or are skipped due to missing dependencies, if they're not relevant to your
+PR) and that pylint is happy:
+
+    $ ./setup.py test
+    ...
+    OK (SKIP=...)
+
+    $ ./setup.py lint
+    ...
+    Your code has been rated at 10.00/10
+
+You can check your code coverage offline as follows:
+
+    $ coverage html
+    $ xdg-open htmlcov/index.html
+
+Once you open your PR, Azure will also check it for you.
+
+We strive to use [GitHub flow](https://help.github.com/en/articles/github-flow).
