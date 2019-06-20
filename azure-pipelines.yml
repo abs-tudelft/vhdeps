@@ -1,0 +1,19 @@
+jobs:
+
+- job:
+  pool:
+    vmImage: ubuntu-latest
+  container: abstudelft/ghdl-gcc-python:latest
+  steps:
+  - script: |
+      python3 setup.py build 
+    displayName: Build
+  - script: |
+      python3 setup.py test
+    displayName: Test
+  - script: |
+      python3 setup.py sdist
+    displayName: Source
+  - script: |
+      python3 setup.py bdist_wheel
+    displayName: Wheel
