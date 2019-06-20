@@ -193,6 +193,27 @@ class TestDump(TestCase):
         self.assertEquals(code, 1)
         self.assertTrue('ResolutionError: circular dependency:' in err)
 
+    def test_multi_unit_circle(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/multi-unit-circle')
+        self.assertEquals(code, 1)
+        self.assertTrue('ResolutionError: circular dependency:' in err)
+
+    def test_multi_unit_design(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/multi-unit-design')
+        self.assertEquals(code, 0)
+        self.assertEquals(out, '\n'.join([
+            'dep work 2008 ' + workdir + '/complex/multi-unit-design/ab.vhd',
+            'dep work 2008 ' + workdir + '/complex/multi-unit-design/cd.vhd',
+            'top work 2008 ' + workdir + '/complex/multi-unit-design/test_tc.vhd',
+        ]) + '\n')
+
+    def test_multi_tc_per_file(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/multi-tc-per-file')
+        self.assertEquals(code, 0)
+        self.assertEquals(out, '\n'.join([
+            'top work 2008 ' + workdir + '/complex/multi-tc-per-file/test_tc.vhd',
+        ]) + '\n')
+
     def test_vhlib_default(self):
         self.maxDiff = None
         code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/vhlib')

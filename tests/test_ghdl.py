@@ -193,6 +193,12 @@ class TestGhdlSpecific(TestCase):
         self.assertTrue('PASSED  bar_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
 
+    def test_multi_tc_per_file(self):
+        code, out, err = run_vhdeps('ghdl', '-i', workdir+'/complex/multi-tc-per-file')
+        self.assertEquals(code, 1)
+        self.assertTrue('NotImplementedError: vhdeps\' test case runners currently do '
+                        'not support having multiple test cases per VHDL file.' in err)
+
 
 @skipIf(not ghdl_installed(), 'missing ghdl')
 @skipIf(not coverage_supported(), 'missing gcov, lcov, or genhtml, or ghdl does not use gcc backend')
