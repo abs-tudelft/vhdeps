@@ -29,3 +29,8 @@ jobs:
     inputs:
       codeCoverageTool: cobertura
       summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+  - script: |
+      bash <(curl https://codecov.io/bash) -f coverage.xml
+    env:
+      CODECOV_TOKEN: $(codecov)
+    displayName: codecov
