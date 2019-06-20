@@ -31,10 +31,7 @@ jobs:
       codeCoverageTool: cobertura
       summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
   - script: |
-      bash <(curl https://codecov.io/bash) -f coverage.xml -P "$SYSTEM_PULLREQUEST_PULLREQUESTNUMBER"
+      bash <(curl https://codecov.io/bash) -f coverage.xml
     env:
-      CI_BUILD_ID: $(Build.BuildNumber)-$(Agent.OS)
-      VCS_BRANCH_NAME: $(Build.SourceBranchName)
-      VCS_COMMIT_ID: $(Build.SourceVersion)
       CODECOV_TOKEN: $(codecov)
     displayName: codecov
