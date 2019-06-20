@@ -22,8 +22,7 @@ import os
 import argparse
 import vhdeps.vhdl as vhdl
 import vhdeps.target as target_mod
-
-__version__ = '0.0.4'
+from vhdeps.version import __version__
 
 def run_cli(args=None):
     """Runs the vhdeps CLI. The command-line arguments are taken from `args`
