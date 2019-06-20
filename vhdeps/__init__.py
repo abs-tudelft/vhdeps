@@ -244,5 +244,8 @@ def run_cli(args=None):
             raise
         return 1
 
-if __name__ == '__main__':
-    sys.exit(run_cli())
+def _init():
+    if __name__ == '__main__':
+        sys.exit(run_cli())
+
+_init()

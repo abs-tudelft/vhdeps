@@ -17,5 +17,8 @@
 import sys
 from vhdeps import run_cli
 
-if __name__ == '__main__':
-    sys.exit(run_cli())
+def _init():
+    if __name__ == '__main__':
+        sys.exit(run_cli())
+
+_init()
