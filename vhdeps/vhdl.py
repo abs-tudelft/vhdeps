@@ -228,8 +228,8 @@ class VhdFile:
                         break
                 else:
                     raise ResolutionError(
-                        'could not find component declaration for %s within %s' %
-                        (comp, ', '.join(map(str, component_decl_vhds))))
+                        'could not find component declaration for %s within:\n - %s' %
+                        (comp, '\n - '.join(map(str, component_decl_vhds))))
 
                 # Look for the accompanying entity and make sure it is compiled
                 # at some point. If the component was defined in a file
@@ -262,16 +262,14 @@ class VhdFile:
         return hash(self.fname)
 
     def __eq__(self, other):
-        try:
-            return self.fname == other.fname
-        except TypeError:
+        if not isinstance(other, VhdFile):
             return False
+        return self.fname == other.fname
 
     def __lt__(self, other):
-        try:
-            return self.fname < other.fname
-        except TypeError:
-            return False
+        if not isinstance(other, VhdFile):
+            raise TypeError('cannot compare VhdFile with %s' % type(other).__name__)
+        return self.fname < other.fname
 
     def __str__(self):
         return self.fname
@@ -365,8 +363,8 @@ class VhdList:
             if not options:
                 if filtered_out:
                     raise ResolutionError(
-                        '%s %s.%s is defined, but only in files that were filtered out: %s' %
-                        (unit_type, lib, name, ', '.join(filtered_out)))
+                        '%s %s.%s is defined, but only in files that were filtered out:\n - %s' %
+                        (unit_type, lib, name, '\n - '.join(filtered_out)))
                 raise ResolutionError(
                     'could not find %s %s.%s' %
                     (unit_type, lib, name))
@@ -450,43 +448,45 @@ class VhdList:
 
     def determine_compile_order(self, require=None):
         """Determines a possible compile order for the files in this list.
-        `require` can optionally be set to a list of entities (each optionally
-        prefixed with the library name, separated by a period, if a library
-        other than "work" is desired) that must be compiled; in this case files
-        that are not necessary to compile those will not be included in the
-        returned compile order. The order is returned as a list of VhdFiles."""
+        `require` can optionally be set to a list of design units (each
+        optionally prefixed with the library name, separated by a period, if a
+        library other than "work" is desired) that must be compiled; in this
+        case files that are not necessary to compile those will not be included
+        in the returned compile order. The order is returned as a list of
+        `VhdFile`s."""
 
-        # Gather a list of all entities within files that were not filtered
+        # Gather a list of all design units within files that were not filtered
         # out.
-        entities = set()
+        units = set()
         for vhd in self.files:
             if not self._is_file_filtered_out(vhd):
-                entities.update(((vhd.lib, name) for name in vhd.entity_defs))
+                units.update((('entity', vhd.lib, name) for name in vhd.entity_defs))
+                units.update((('package', vhd.lib, name) for name in vhd.package_defs))
 
-        # If the user specified a list of required entities, filter out
-        # entities that are not required.
+        # If the user specified a list of required design units, filter out
+        # design units that are not required.
         if require:
-            required_entities = set()
+            required_units = set()
             for req in require:
                 req = req.split('.', maxsplit=1)
                 name = req[-1].lower()
                 lib = req[0].lower() if len(req) > 1 else 'work'
                 found = False
-                for elib, ename in entities:
+                for etyp, elib, ename in units:
                     if fnmatch.fnmatchcase(elib.lower(), lib):
                         if fnmatch.fnmatchcase(ename.lower(), name):
-                            required_entities.add((elib, ename))
+                            required_units.add((etyp, elib, ename))
                             found = True
                 if not found:
                     print('Warning: %s.%s did not match anything.' % (lib, name), file=sys.stderr)
-            entities = required_entities
+            units = required_units
 
-        # Sort the entities so the final compile order doesn't depend on
+        # Sort the design units so the final compile order doesn't depend on
         # Python's nondeterministic set ordering.
-        entities = reversed(sorted(entities))
+        units = reversed(sorted(units))
 
         # Resolve all the entities that we found.
-        units = [self._resolve_design_unit('entity', lib, name) for lib, name in entities]
+        units = [self._resolve_design_unit(typ, lib, name) for typ, lib, name in units]
 
         # Add the entities to the compile order.
         for unit in units:
@@ -497,6 +497,8 @@ class VhdList:
         # consistent.
         self.top = []
         for vhd in self.order:
+            if not vhd.entity_defs:
+                continue
             for vhd2 in self.order:
                 if vhd in vhd2.anywhere or vhd in vhd2.before:
                     break

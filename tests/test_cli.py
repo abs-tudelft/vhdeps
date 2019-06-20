@@ -68,8 +68,8 @@ class TestCommandLine(TestCase):
 
     def test_empty_path(self):
         code, out, err = run_vhdeps('dump', '-i', workdir+'/simple/empty')
-        self.assertEquals(code, 1)
-        self.assertTrue('Error: no VHDL files found.' in err)
+        self.assertEquals(code, 0)
+        self.assertTrue('Warning: no VHDL files found.' in err)
 
     def test_stacktrace(self):
         with self.assertRaises(ValueError):

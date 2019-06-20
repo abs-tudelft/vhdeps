@@ -143,6 +143,41 @@ class TestDump(TestCase):
         self.assertEquals(code, 1)
         self.assertTrue('ResolutionError: entity work.test_tc is defined in multiple, ambiguous files:' in err)
 
+    def test_missing_package(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/vhlib/util/UtilMem64_pkg.vhd')
+        self.assertEquals(code, 1)
+        self.assertTrue('complex/vhlib/util/UtilMem64_pkg.vhd' in err)
+        self.assertTrue('could not find package work.utilstr_pkg' in err)
+
+    def test_missing_component(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/missing-component')
+        self.assertEquals(code, 1)
+        self.assertTrue('could not find component declaration for missing' in err)
+
+    def test_black_box_enforce(self):
+        code, out, err = run_vhdeps(
+            'dump',
+            '-i', workdir + '/complex/vhlib/util',
+            '-i', workdir + '/complex/vhlib/stream/Stream_pkg.vhd',
+            '-i', workdir + '/complex/vhlib/stream/StreamBuffer.vhd')
+        self.assertEquals(code, 1)
+        self.assertTrue('complex/vhlib/stream/StreamBuffer.vhd' in err)
+        self.assertTrue('black box: could not find entity work.streamfifo' in err)
+
+    def test_black_box_ignore(self):
+        code, out, err = run_vhdeps(
+            'dump',
+            '-i', workdir + '/complex/vhlib/util',
+            '-x', workdir + '/complex/vhlib/stream/Stream_pkg.vhd',
+            '-i', workdir + '/complex/vhlib/stream/StreamBuffer.vhd')
+        self.assertEquals(code, 0)
+
+    def test_missing_filtered(self):
+        code, out, err = run_vhdeps('dump', '-i', workdir + '/complex/missing-filtered')
+        self.assertEquals(code, 1)
+        self.assertTrue('entity work.synth_only is defined, but only in files that were filtered out:' in err)
+        self.assertTrue('synth_only.syn.vhd is synthesis-only' in err)
+
     def test_libraries(self):
         code, out, err = run_vhdeps('dump', '-i', workdir + '/simple/all-good', '-i', 'timeout:' + workdir + '/simple/timeout')
         self.assertEquals(code, 0)
@@ -308,6 +343,9 @@ class TestDump(TestCase):
             'dep work 2008 ' + workdir + '/complex/vhlib/stream/test/StreamSync/StreamSync_tb.sim.08.vhd',
             'top work 2008 ' + workdir + '/complex/vhlib/stream/test/StreamSync/StreamSync_tc.sim.08.vhd',
             'dep work 2008 ' + workdir + '/complex/vhlib/util/UtilRam1R1W.vhd',
+            'dep work 2008 ' + workdir + '/complex/vhlib/util/UtilConv_pkg.vhd',
+            'dep work 2008 ' + workdir + '/complex/vhlib/util/UtilStr_pkg.vhd',
+            'dep work 2008 ' + workdir + '/complex/vhlib/util/UtilMem64_pkg.vhd',
         ]) + '\n')
 
     def test_vhlib_93_desired(self):
@@ -404,6 +442,9 @@ class TestDump(TestCase):
             'dep work 2008 ' + workdir + '/complex/vhlib/stream/test/StreamSync/StreamSync_tb.sim.08.vhd',
             'top work 2008 ' + workdir + '/complex/vhlib/stream/test/StreamSync/StreamSync_tc.sim.08.vhd',
             'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilRam1R1W.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilConv_pkg.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilStr_pkg.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilMem64_pkg.vhd',
         ]) + '\n')
 
     def test_vhlib_93_required(self):
@@ -432,5 +473,8 @@ class TestDump(TestCase):
             'dep work 1993 ' + workdir + '/complex/vhlib/stream/StreamSlice.vhd',
             'top work 1993 ' + workdir + '/complex/vhlib/stream/StreamSync.vhd',
             'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilRam1R1W.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilConv_pkg.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilStr_pkg.vhd',
+            'dep work 1993 ' + workdir + '/complex/vhlib/util/UtilMem64_pkg.vhd',
         ]) + '\n')
 

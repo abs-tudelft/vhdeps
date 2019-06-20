@@ -216,12 +216,17 @@ def run_cli(args=None):
         add_dir(args.strict, strict=True)
         add_dir(args.external, allow_bb=True)
 
-        # Determine the compile order.
-        vhd_list.determine_compile_order(args.entity)
+        if not vhd_list.files:
+            print('Warning: no VHDL files found.', file=sys.stderr)
+        else:
 
-        if not vhd_list.order:
-            print('Error: no VHDL files found.', file=sys.stderr)
-            return 1
+            # Determine the compile order.
+            vhd_list.determine_compile_order(args.entity)
+
+            if not vhd_list.order:
+                print('Warning: no design units found.', file=sys.stderr)
+            elif not vhd_list.top:
+                print('Warning: no toplevel entities found.', file=sys.stderr)
 
         # Run the selected target with the selected output file or stdout.
         if args.outfile is None:
