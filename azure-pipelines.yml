@@ -12,6 +12,8 @@ jobs:
       python3 setup.py test
     displayName: Test
   - script: |
+      python3 setup.py lint
+  - script: |
       python3 setup.py sdist
     displayName: Source
   - script: |
@@ -24,3 +26,4 @@ jobs:
     inputs:
       codeCoverageTool: cobertura
       summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'
+      reportDirectory: '$(System.DefaultWorkingDirectory)/cover'

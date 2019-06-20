@@ -22,3 +22,4 @@ vhdeps.egg-info
 htmlcov
 coverage.xml
 nosetests.xml
+cover
