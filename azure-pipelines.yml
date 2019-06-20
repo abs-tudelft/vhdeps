@@ -17,3 +17,10 @@ jobs:
   - script: |
       python3 setup.py bdist_wheel
     displayName: Wheel
+  - task: PublishTestResults@2
+    inputs:
+      testResultsFiles: '**/nosetests.xml'
+  - task: PublishCodeCoverageResults@1
+    inputs:
+      codeCoverageTool: cobertura
+      summaryFileLocation: '$(System.DefaultWorkingDirectory)/**/coverage.xml'

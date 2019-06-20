@@ -21,3 +21,4 @@ vhdeps.egg-info
 .pytest_cache/
 htmlcov
 coverage.xml
+nosetests.xml
