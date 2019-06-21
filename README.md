@@ -2,9 +2,10 @@
 vhdeps: a VHDL file dependency analyzer and test runner
 =======================================================
 
-[![PyPi](https://badgen.net/pypi/v/vhdeps)](https://pypi.org/project/vhdeps/)
+[![PyPi](https://badgen.net/pypi/v/vhdeps?color=green)](https://pypi.org/project/vhdeps/)
 [![Build Status](https://dev.azure.com/abs-tudelft/vhdeps/_apis/build/status/abs-tudelft.vhdeps?branchName=master)](https://dev.azure.com/abs-tudelft/vhdeps/_build/latest?definitionId=4&branchName=master)
 [![codecov](https://codecov.io/gh/abs-tudelft/vhdeps/branch/master/graph/badge.svg)](https://codecov.io/gh/abs-tudelft/vhdeps)
+[![License](https://badgen.net/github/license/abs-tudelft/vhdeps)](https://github.com/abs-tudelft/vhdeps/blob/master/LICENSE)
 
 Whatever tool you use, testing VHDL code has always been a pain. With most
 tools you have to write TCL scripts for compilation, requiring you to copypaste
