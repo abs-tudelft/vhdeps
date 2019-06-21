@@ -46,7 +46,7 @@ setup(
     long_description = read('README.md'),
     long_description_content_type = 'text/markdown',
     classifiers = [
-        'Development Status :: 3 - Alpha',
+        'Development Status :: 4 - Beta',
         'Intended Audience :: Developers',
         'Topic :: Software Development :: Build Tools',
         'License :: OSI Approved :: Apache Software License',
