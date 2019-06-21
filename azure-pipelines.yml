@@ -53,3 +53,9 @@ jobs:
       python3 -m twine upload -r pypi --config-file $(PYPIRC_PATH) dist/*
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
     displayName: Publish to PyPi
+  - task: GitHubRelease@0
+    inputs:
+      gitHubConnection: github
+      repositoryName: abs-tudelft/vhdeps
+      assets: $(System.DefaultWorkingDirectory)/dist/*.whl
+    displayName: Publish to GitHub
