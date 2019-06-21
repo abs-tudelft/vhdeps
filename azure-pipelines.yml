@@ -58,4 +58,5 @@ jobs:
       gitHubConnection: github
       repositoryName: abs-tudelft/vhdeps
       assets: $(System.DefaultWorkingDirectory)/dist/*.whl
+      addChangeLog: true
     displayName: Publish to GitHub
