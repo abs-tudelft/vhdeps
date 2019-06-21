@@ -59,6 +59,7 @@ jobs:
       repositoryName: abs-tudelft/vhdeps
       action: edit
       tag: $(Build.SourceBranchName)
+      title: $(Build.SourceBranchName)
       assets: $(System.DefaultWorkingDirectory)/dist/*.whl
       addChangeLog: true
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
