@@ -2,7 +2,7 @@
 vhdeps: a VHDL file dependency analyzer and test runner
 =======================================================
 
-[![PyPi](https://badgen.net/pypi/v/vhdeps?color=green)](https://pypi.org/project/vhdeps/)
+[![PyPi](https://badgen.net/pypi/v/vhdeps)](https://pypi.org/project/vhdeps/)
 [![Build Status](https://dev.azure.com/abs-tudelft/vhdeps/_apis/build/status/abs-tudelft.vhdeps?branchName=master)](https://dev.azure.com/abs-tudelft/vhdeps/_build/latest?definitionId=4&branchName=master)
 [![codecov](https://codecov.io/gh/abs-tudelft/vhdeps/branch/master/graph/badge.svg)](https://codecov.io/gh/abs-tudelft/vhdeps)
 ![Linux](https://badgen.net/badge/os/Linux)
