@@ -2,9 +2,11 @@
 vhdeps: a VHDL file dependency analyzer and test runner
 =======================================================
 
-[![PyPi](https://badgen.net/pypi/v/vhdeps?color=green)](https://pypi.org/project/vhdeps/)
+[![PyPi](https://badgen.net/pypi/v/vhdeps)](https://pypi.org/project/vhdeps/)
 [![Build Status](https://dev.azure.com/abs-tudelft/vhdeps/_apis/build/status/abs-tudelft.vhdeps?branchName=master)](https://dev.azure.com/abs-tudelft/vhdeps/_build/latest?definitionId=4&branchName=master)
 [![codecov](https://codecov.io/gh/abs-tudelft/vhdeps/branch/master/graph/badge.svg)](https://codecov.io/gh/abs-tudelft/vhdeps)
+![Linux](https://badgen.net/badge/os/Linux)
+![MacOS](https://badgen.net/badge/os/MacOS)
 [![License](https://badgen.net/github/license/abs-tudelft/vhdeps)](https://github.com/abs-tudelft/vhdeps/blob/master/LICENSE)
 
 Whatever tool you use, testing VHDL code has always been a pain. With most
@@ -32,6 +34,9 @@ Installation
 You can of course install it to a venv or your home directory as well if you
 prefer, as long as you make sure you add the `bin` folder to your system path,
 or call `vhdeps` using `python3 -m vhdeps`.
+
+We have only tested `vhdeps` on Linux and MacOS thus far, but there should not
+be any fundamental issues with making it work on Windows as well.
 
 Installing `vhdeps` this way takes care of all its Python dependencies, but
 does not install [`ghdl`](https://github.com/ghdl/ghdl) or a `vsim`-compatible
