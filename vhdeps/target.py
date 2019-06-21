@@ -22,13 +22,11 @@ import argparse
 _TARGETS = {}
 
 for fname in os.listdir(os.path.join(os.path.dirname(__file__), 'targets')):
-    if not fname.endswith('.py'):
-        continue
-    _name = os.path.splitext(os.path.basename(fname))[0]
-    if _name in ('__init__', 'shared'):
-        continue
-    _TARGETS[_name] = importlib.import_module('.targets.' + _name, package=__package__)
-
+    if fname.endswith('.py'):
+        _name = os.path.splitext(os.path.basename(fname))[0]
+        if _name in ('__init__', 'shared'):
+            continue
+        _TARGETS[_name] = importlib.import_module('.targets.' + _name, package=__package__)
 
 def print_help():
     """Prints a list of available targets and documentation."""
