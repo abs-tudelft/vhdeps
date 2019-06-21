@@ -46,10 +46,10 @@ jobs:
     displayName: Install twine
   - task: TwineAuthenticate@0
     inputs:
-      externalFeeds: 'testpypi'
+      externalFeeds: 'pypi'
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
     displayName: Authenticate Twine
   - script: |
-      'python3 -m twine upload -r https://test.pypi.org/legacy/ --config-file $(PYPIRC_PATH) dist/*'
+      python3 -m twine upload -r pypi --config-file $(PYPIRC_PATH) dist/*
     condition: and(succeeded(), startsWith(variables['Build.SourceBranch'], 'refs/tags/'))
     displayName: Publish to PyPi
