@@ -1,6 +1,7 @@
 """Tests the command-line interface."""
 
 from unittest import TestCase
+from unittest.mock import patch
 import os
 from .common import run_vhdeps
 
@@ -63,3 +64,21 @@ class TestCommandLine(TestCase):
         """Test vhdeps CLI --stacktrace switch"""
         with self.assertRaises(ValueError):
             run_vhdeps('dump', '-i', 'not-a-path', '--stacktrace')
+
+    def test_interrupt(self):
+        """Test the KeyboardInterrupt handler"""
+        with patch('vhdeps.vhdl.VhdList.add_dir', side_effect=KeyboardInterrupt):
+            code, _, _ = run_vhdeps('dump', '-i', DIR+'/simple/empty')
+            self.assertEqual(code, 1)
+
+    def test_interrupt_stacktrace(self):
+        """Test the KeyboardInterrupt handler with --stacktrace"""
+        with patch('vhdeps.vhdl.VhdList.add_dir', side_effect=KeyboardInterrupt):
+            with self.assertRaises(KeyboardInterrupt):
+                run_vhdeps('dump', '-i', DIR+'/simple/empty', '--stacktrace')
+
+    def test_no_design_units(self):
+        """Test the no design units warning"""
+        code, _, err = run_vhdeps('dump', 'nothing', '-i', DIR+'/simple/all-good')
+        self.assertEqual(code, 0)
+        self.assertTrue('Warning: no design units found.' in err)

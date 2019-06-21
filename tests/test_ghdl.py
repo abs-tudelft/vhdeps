@@ -1,10 +1,11 @@
 """Tests the GHDL backend."""
 
 from unittest import TestCase, skipIf
+from unittest.mock import patch
 import os
 import tempfile
 from plumbum import local
-from .common import run_vhdeps
+from .common import run_vhdeps, MockMissingImport
 
 DIR = os.path.realpath(os.path.dirname(__file__))
 
@@ -130,6 +131,28 @@ class TestGhdlSpecific(TestCase):
         self.assertTrue('ERROR   test_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
+    def test_no_wc(self):
+        """Test the error message for when GHDL does not understand -Wc"""
+        with local.env(PATH=DIR+'/ghdl/fake-wc-error:' + local.env['PATH']):
+            code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/all-good', '-c')
+        self.assertEqual(code, 2)
+        self.assertTrue('GHDL did not understand -Wc option! You need a version '
+                        'of GHDL that was\ncompiled with the GCC backend' in out)
+
+    def test_no_ghdl(self):
+        """Test the error message that is generated when ghdl is missing"""
+        with local.env(PATH=''):
+            code, _, err = run_vhdeps('ghdl', '-i', DIR+'/simple/all-good')
+            self.assertEqual(code, 1)
+            self.assertTrue('ghdl was not found.' in err)
+
+    def test_no_plumbum(self):
+        """Test the error message that is generated when plumbum is missing"""
+        with MockMissingImport('plumbum'):
+            code, _, err = run_vhdeps('ghdl', '-i', DIR+'/simple/all-good')
+            self.assertEqual(code, 1)
+            self.assertTrue('the GHDL backend requires plumbum to be installed' in err)
+
     @skipIf(not ghdl_installed(), 'missing ghdl')
     def test_no_tempdir(self):
         """Test the --no-tempdir flag for GHDL"""
@@ -212,6 +235,14 @@ class TestGhdlSpecific(TestCase):
         self.assertTrue('PASSED  foo_tc' in out)
         self.assertTrue('PASSED  bar_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
+
+    @skipIf(not ghdl_installed(), 'missing ghdl')
+    def test_parallel_interrupt(self):
+        """Test GHDL parallel elab/execute interrupted with ctrl+C"""
+        with patch('queue.Queue.join', side_effect=KeyboardInterrupt):
+            code, _, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/multiple-ok', '-j')
+            self.assertEqual(code, 1)
+
 
 @skipIf(not coverage_supported(), 'missing gcov, lcov, or genhtml, or ghdl with gcc backend')
 class TestGhdlWithCoverage(TestCase):

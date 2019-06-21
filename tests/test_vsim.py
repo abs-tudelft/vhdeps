@@ -4,7 +4,7 @@ from unittest import TestCase, skipIf
 import os
 import tempfile
 from plumbum import local
-from .common import run_vhdeps
+from .common import run_vhdeps, MockMissingImport
 
 DIR = os.path.realpath(os.path.dirname(__file__))
 
@@ -135,12 +135,19 @@ class TestVsimMocked(TestCase):
         self.assertEqual(code, 1)
         self.assertTrue('VHDL version 2012 is not supported' in err)
 
-    @skipIf(vsim_installed(), 'vsim is installed')
     def test_no_vsim(self):
         """Test the error message that is generated when vsim is missing"""
-        code, _, err = run_vhdeps('vsim', '-i', DIR+'/simple/all-good')
-        self.assertEqual(code, 1)
-        self.assertTrue('no vsim-compatible simulator was found.' in err)
+        with local.env(PATH=''):
+            code, _, err = run_vhdeps('vsim', '-i', DIR+'/simple/all-good')
+            self.assertEqual(code, 1)
+            self.assertTrue('no vsim-compatible simulator was found.' in err)
+
+    def test_no_plumbum(self):
+        """Test the error message that is generated when plumbum is missing"""
+        with MockMissingImport('plumbum'):
+            code, _, err = run_vhdeps('vsim', '-i', DIR+'/simple/all-good')
+            self.assertEqual(code, 1)
+            self.assertTrue('the vsim backend requires plumbum to be installed' in err)
 
     def test_gui_tempdir(self):
         """Test running (a fake) vsim in GUI mode in a temporary directory"""
