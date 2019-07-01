@@ -58,13 +58,20 @@ setup(
     packages = ['vhdeps', 'vhdeps.targets'],
     entry_points = {'console_scripts': ['vhdeps=vhdeps:run_cli']},
     python_requires = '>=3',
-    install_requires = ['plumbum'],
+    install_requires = [
+        'plumbum',
+        'lcov_cobertura',
+    ],
     setup_requires = [
         'better-setuptools-git-version',
         'setuptools-lint',
-        'pylint'
+        'pylint',
     ],
-    tests_require = ['nose', 'coverage'],
+    tests_require = [
+        'nose',
+        'coverage',
+        'lcov_cobertura',
+    ],
     cmdclass = {
         'test': NoseTestCommand,
         'build_py': BuildWithVersionCommand,
