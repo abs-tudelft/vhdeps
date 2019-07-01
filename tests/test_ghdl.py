@@ -22,6 +22,7 @@ def coverage_supported():
     GHDL are met."""
     try:
         from plumbum.cmd import ghdl, gcov, lcov, genhtml #pylint: disable=W0611
+        import lcov_cobertura #pylint: disable=W0611
         return 'GCC back-end' in ghdl('--version')
     except ImportError:
         return False
@@ -244,9 +245,35 @@ class TestGhdlSpecific(TestCase):
             self.assertEqual(code, 1)
 
 
-@skipIf(not coverage_supported(), 'missing gcov, lcov, or genhtml, or ghdl with gcc backend')
+@skipIf(
+    not coverage_supported(),
+    'missing gcov, lcov, genhtml, or lcov_cobertura, or ghdl with gcc backend')
 class TestGhdlWithCoverage(TestCase):
     """Tests the code coverage features of the GHDL backend."""
+
+    def test_cobertura(self):
+        """Test writing Cobertura coverage data with GHDL"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            code, _, _ = run_vhdeps(
+                'ghdl',
+                '-i', DIR+'/simple/multiple-ok',
+                '-c', '--cover-dir', tempdir)
+            self.assertEqual(code, 0)
+            print(os.listdir(tempdir))
+            self.assertTrue('coverage.xml' in os.listdir(tempdir))
+
+    def test_no_lcov_cobertura(self):
+        """Test the error message that is generated when lcov_cobertura is missing"""
+        with MockMissingImport('lcov_cobertura'):
+            with tempfile.TemporaryDirectory() as tempdir:
+                code, _, err = run_vhdeps(
+                    'ghdl',
+                    '-i', DIR+'/simple/multiple-ok',
+                    '-c', '--cover-dir', tempdir)
+                self.assertEqual(code, 1)
+                self.assertTrue(
+                    'ImportError: the GHDL backend requires lcov_cobertura to '
+                    'generate Cobertura XML coverage data' in err)
 
     def test_gcov(self):
         """Test writing gcov coverage data with GHDL"""
@@ -254,7 +281,7 @@ class TestGhdlWithCoverage(TestCase):
             code, _, _ = run_vhdeps(
                 'ghdl',
                 '-i', DIR+'/simple/multiple-ok',
-                '-c', '--cover-dir', tempdir)
+                '-cgcov', '--cover-dir', tempdir)
             self.assertEqual(code, 0)
             print(os.listdir(tempdir))
             self.assertTrue('foo_tc.gcda' in os.listdir(tempdir))

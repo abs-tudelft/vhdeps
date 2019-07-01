@@ -47,16 +47,17 @@ def add_arguments(parser):
 
     parser.add_argument(
         '-c', '--coverage', nargs='?', action='append',
-        choices=['gcov', 'lcov', 'html'],
+        choices=['gcov', 'lcov', 'html', 'xml'],
         help='Adds flags to GHDL for generating gcov-style code coverage '
         'data. This only works when GHDL is compiled with the GCC backend! '
         'The coverage files are moved to the directory specified by '
         '--cover-dir, or the working directory if this is not specified. '
         'The file format written depends on the parameter to this switch: '
         '"gcov" copies the .gcno and .gcda files, "lcov" runs lcov in '
-        'addition to produce coverage.info and copies that instead, and '
+        'addition to produce coverage.info and copies that instead, '
         '"html" calls genhtml to generate HTML output and copies that '
-        'instead. Default is "gcov".')
+        'instead, "xml" turns the lcov output data into Cobertura format '
+        'and outputs that instead. Default is "xml".')
 
     parser.add_argument(
         '-d', '--cover-dir', action='store', default=None,
@@ -126,7 +127,7 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_
 
     # Add flags for coverage output if requested.
     if coverage:
-        ghdl_analyze = ghdl_analyze['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage']
+        ghdl_analyze = ghdl_analyze['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage', '-Wc,-O3']
         ghdl_elaborate = ghdl_elaborate['-Wl,-lgcov']
 
     return ghdl_analyze, ghdl_elaborate, ghdl_run
@@ -298,7 +299,7 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
     if coverage:
         coverage = coverage[-1]
         if coverage is None:
-            coverage = 'gcov'
+            coverage = 'xml'
 
         local['mkdir']('-p', cover_dir)
 
@@ -315,6 +316,19 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
         elif coverage == 'html':
             local['lcov']('-c', '-d', '.', '-o', 'coverage.info')
             local['genhtml']('-o', cover_dir, 'coverage.info')
+
+        elif coverage == 'xml':
+            try:
+                from lcov_cobertura import LcovCobertura
+            except ImportError:
+                raise ImportError('the GHDL backend requires lcov_cobertura to '
+                                  'generate Cobertura XML coverage data '
+                                  '(pip3 install lcov_cobertura).')
+            local['lcov']('-c', '-d', '.', '-o', 'coverage.info')
+            with open('coverage.info', 'r') as lcov_file:
+                xml_data = LcovCobertura(lcov_file.read()).convert()
+            with open(cover_dir + os.sep + 'coverage.xml', 'w') as xml_file:
+                xml_file.write(xml_data)
 
         else:
             raise NotImplementedError('coverage output type %s' % coverage)
