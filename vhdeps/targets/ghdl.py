@@ -140,7 +140,7 @@ def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
     exit_code, *_ = run_cmd(
         output_file,
         ghdl_elaborate,
-        '--work=%s' % test_case.lib,
+        '--work=%s' % test_case.file.lib,
         test_case.unit)
     if exit_code != 0:
         output_file.write('Elaboration for %s failed!\n' % test_case.unit)
@@ -151,13 +151,13 @@ def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
     vcd_switch = []
     if vcd_dir is not None:
         vcd_file = '%s/%s.%s.vcd' % (
-            vcd_dir, test_case.lib, test_case.unit)
+            vcd_dir, test_case.file.lib, test_case.unit)
         vcd_switch.append('--vcd=%s' % vcd_file)
     exit_code, stdout, *_ = run_cmd(
         output_file,
         ghdl_run,
-        '--work=' + test_case.lib, test_case.unit,
-        '--stop-time=' + test_case.get_timeout().replace(' ', ''),
+        '--work=' + test_case.file.lib, test_case.unit,
+        '--stop-time=' + test_case.file.get_timeout().replace(' ', ''),
         *vcd_switch)
     if 'simulation stopped by --stop-time' in stdout:
         code = 1

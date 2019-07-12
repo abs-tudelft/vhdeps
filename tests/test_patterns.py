@@ -92,9 +92,14 @@ class TestPatterns(TestCase):
         self.assertFalse(bool(re.search(r'ghdl -r [^\n]*baz', out)))
 
     def test_multi_tc_per_file(self):
-        """Test multiple test cases per file (not supported)"""
+        """Test multiple test cases per file"""
         with local.env(PATH=DIR+'/ghdl/fake-ghdl:' + local.env['PATH']):
-            code, _, err = run_vhdeps('ghdl', '-i', DIR+'/complex/multi-tc-per-file')
-        self.assertEqual(code, 1)
-        self.assertTrue('NotImplementedError: vhdeps\' test case runners currently do '
-                        'not support having multiple test cases per VHDL file.' in err)
+            code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/complex/multi-tc-per-file')
+        self.assertEqual(code, 0)
+        self.assertTrue(bool(re.search(r'ghdl -a [^\n]*test_tc.vhd', out)))
+        self.assertTrue(bool(re.search(r'ghdl -e [^\n]*foo_tc', out)))
+        self.assertTrue(bool(re.search(r'ghdl -e [^\n]*bar_tc', out)))
+        self.assertFalse(bool(re.search(r'ghdl -e [^\n]*baz', out)))
+        self.assertTrue(bool(re.search(r'ghdl -r [^\n]*foo_tc', out)))
+        self.assertTrue(bool(re.search(r'ghdl -r [^\n]*bar_tc', out)))
+        self.assertFalse(bool(re.search(r'ghdl -r [^\n]*baz', out)))

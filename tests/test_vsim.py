@@ -27,6 +27,12 @@ class TestVsimReal(TestCase):
         self.assertEqual(code, 0)
         self.assertTrue('working!' in out)
 
+    def test_multiple_per_file(self):
+        """Test running vsim on a file with multiple test cases"""
+        code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/complex/multi-tc-per-file')
+        self.assertEqual(code, 0)
+        self.assertTrue('working!' in out)
+
     def test_failure(self):
         """Test running vsim on a single failing test case"""
         code, out, _ = run_vhdeps('vsim', '-i', DIR+'/simple/failure')
