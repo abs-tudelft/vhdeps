@@ -81,7 +81,22 @@ def add_arguments(parser):
         'regardless of whether it passed or not. If there are multiple test '
         'cases, gtkwave is launched for the first failure.')
 
-def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_):
+    parser.add_argument(
+        '-W', action='append', metavar='#{#},<options>', dest='extra_args',
+        #   It'd be great to use [] here ^^^ but Python devs managed to
+        # sufficiently bork argparse's internals to make that break before
+        # Python 3.8. Since it's completely asenine to require 3.8 for
+        # something like this, {} will have to do.
+        help='Pass comma-separated options to the command specified by #. The '
+        'first # can be \'a\' for the analysis command, \'e\' for the '
+        'elaboration command, and \'r\' for the run command. If a second '
+        'character is specified, <options> are chained to a \'-W#,<options>\' '
+        'option for the command specified by the first letter. For instance, '
+        '\'-Wac,-O3\' passes -O3 to the GCC compiler during the analysis '
+        'phase.')
+
+def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False,
+                   coverage=None, extra_args=None, **_):
     """Returns a three-tuple of the analyze, elaborate, and run commands for
     GHDL in plumbum form."""
 
@@ -129,6 +144,25 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False, coverage=None, **_
     if coverage:
         ghdl_analyze = ghdl_analyze['-Wc,-fprofile-arcs', '-Wc,-ftest-coverage', '-Wc,-O3']
         ghdl_elaborate = ghdl_elaborate['-Wl,-lgcov']
+
+    # Add user-specified extra arguments.
+    if extra_args:
+        for extra_arg in extra_args:
+            if ',' not in extra_arg:
+                raise ValueError('invalid value for -W')
+            target, *args = extra_arg.split(',')
+            if len(target) not in (1, 2):
+                raise ValueError('invalid value for -W')
+            if len(target) == 2:
+                args = ['-W%s,%s' % (target[1], ','.join(args))]
+            if target[0] == 'a':
+                ghdl_analyze = ghdl_analyze[args]
+            elif target[0] == 'e':
+                ghdl_elaborate = ghdl_elaborate[args]
+            elif target[0] == 'r':
+                ghdl_run = ghdl_run[args]
+            else:
+                raise ValueError('invalid value for -W')
 
     return ghdl_analyze, ghdl_elaborate, ghdl_run
 
