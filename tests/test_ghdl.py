@@ -175,6 +175,16 @@ class TestGhdlSpecific(TestCase):
             self.assertTrue('work-obj08.cf' in os.listdir(tempdir))
 
     @skipIf(not ghdl_installed(), 'missing ghdl')
+    def test_workdir(self):
+        """Test the workdir for the test case"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            local['cp'](DIR+'/complex/file-io/test_tc.vhd', tempdir)
+            with local.cwd(tempdir):
+                code, _, _ = run_vhdeps('ghdl')
+            self.assertEqual(code, 0)
+            self.assertEqual(sorted(os.listdir(tempdir)), ['output_file.txt', 'test_tc.vhd'])
+
+    @skipIf(not ghdl_installed(), 'missing ghdl')
     def test_vcd_dir(self):
         """Test VCD output with GHDL"""
         with tempfile.TemporaryDirectory() as tempdir:

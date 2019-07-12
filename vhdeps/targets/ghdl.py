@@ -185,14 +185,20 @@ def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
     vcd_switch = []
     if vcd_dir is not None:
         vcd_file = '%s/%s.%s.vcd' % (
-            vcd_dir, test_case.file.lib, test_case.unit)
+            os.path.realpath(vcd_dir), test_case.file.lib, test_case.unit)
         vcd_switch.append('--vcd=%s' % vcd_file)
+
+    from plumbum import local
+    libdir = str(local.cwd)
     exit_code, stdout, *_ = run_cmd(
         output_file,
         ghdl_run,
+        '--workdir=' + libdir,
+        '-P' + libdir,
         '--work=' + test_case.file.lib, test_case.unit,
         '--stop-time=' + test_case.file.get_timeout().replace(' ', ''),
-        *vcd_switch)
+        *vcd_switch,
+        workdir=os.path.dirname(test_case.file.fname))
     if 'simulation stopped by --stop-time' in stdout:
         code = 1
     elif exit_code != 0:
