@@ -2,6 +2,7 @@
 
 from unittest import TestCase, skipIf
 from unittest.mock import patch
+import re
 import os
 import tempfile
 from plumbum import local
@@ -253,6 +254,22 @@ class TestGhdlSpecific(TestCase):
         with patch('queue.Queue.join', side_effect=KeyboardInterrupt):
             code, _, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/multiple-ok', '-j')
             self.assertEqual(code, 1)
+
+    def test_extra_options(self):
+        """Test the -W option for GHDL"""
+        with local.env(PATH=DIR+'/ghdl/fake-ghdl:' + local.env['PATH']):
+            self.assertNotEqual(run_vhdeps('ghdl', '-i', DIR+'/simple/all-good', '-W'), 0)
+            self.assertNotEqual(run_vhdeps('ghdl', '-i', DIR+'/simple/all-good', '-Wx'), 0)
+            self.assertNotEqual(run_vhdeps('ghdl', '-i', DIR+'/simple/all-good', '-W,x'), 0)
+            self.assertNotEqual(run_vhdeps('ghdl', '-i', DIR+'/simple/all-good', '-Wx,x'), 0)
+            code, out, _ = run_vhdeps(
+                'ghdl', '-i', DIR+'/simple/all-good',
+                '-Wa,a,na,lyze', '-We,e,la,bo,rate', '-Wr,run', '-Wrx,a,b,c')
+        self.assertEqual(code, 0)
+        self.assertTrue(bool(re.search(r'ghdl -a [^\n]* a na lyze', out)))
+        self.assertTrue(bool(re.search(r'ghdl -e [^\n]* e la bo rate', out)))
+        self.assertTrue(bool(re.search(r'ghdl -r [^\n]* run', out)))
+        self.assertTrue(bool(re.search(r'ghdl -r [^\n]* -Wx,a,b,c', out)))
 
 
 @skipIf(
