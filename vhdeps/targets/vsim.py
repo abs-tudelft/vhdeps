@@ -381,11 +381,11 @@ def _write_tcl(vhd_list, tcl_file, **kwargs):
     test_cases = get_test_cases(vhd_list, **kwargs)
     for test_case in test_cases:
         tcl_file.write('lappend testcases [list %s %s "%s"]\n' % (
-            test_case.lib, test_case.unit, test_case.get_timeout()))
+            test_case.file.lib, test_case.unit, test_case.file.get_timeout()))
     if len(test_cases) == 1:
         test_case = test_cases[0]
         tcl_file.write('simulate %s %s "%s"\n' % (
-            test_case.lib, test_case.unit, test_case.get_timeout()))
+            test_case.file.lib, test_case.unit, test_case.file.get_timeout()))
     else:
         tcl_file.write('regression\n')
 

@@ -16,6 +16,7 @@
 
 import sys
 import fnmatch
+from collections import namedtuple
 
 def add_arguments_for_get_test_cases(parser):
     """Adds the appropriate command line arguments for the `get_test_cases()`
@@ -33,6 +34,8 @@ def add_arguments_for_get_test_cases(parser):
         'partial match. If no patterns are specified, the matcher defaults to '
         'a single \'*_tc\' pattern.')
 
+TestCase = namedtuple('TestCase', ('file', 'unit'))
+
 def get_test_cases(vhd_list, pattern=None, **_):
     """Filters the toplevel entities in `vhd_list` using the given pattern
     list, returning the resulting list."""
@@ -40,25 +43,21 @@ def get_test_cases(vhd_list, pattern=None, **_):
         pattern = ['*_tc']
     test_cases = []
     for top in vhd_list.top:
-        if top.unit is None:
-            raise NotImplementedError(
-                'vhdeps\' test case runners currently do not support having '
-                'multiple test cases per VHDL file.\nThe offending file is '
-                '"%s".' % top.fname)
-        include = False
-        for pat in pattern:
-            target = top.unit
-            if pat.startswith(':'):
-                target = top.fname
-                pat = pat[1:]
-            invert = False
-            if pat.startswith('!'):
-                invert = True
-                pat = pat[1:]
-            if fnmatch.fnmatchcase(target, pat):
-                include = not invert
-        if include:
-            test_cases.append(top)
+        for unit in top.entity_defs:
+            include = False
+            for pat in pattern:
+                target = unit
+                if pat.startswith(':'):
+                    target = top.fname
+                    pat = pat[1:]
+                invert = False
+                if pat.startswith('!'):
+                    invert = True
+                    pat = pat[1:]
+                if fnmatch.fnmatchcase(target, pat):
+                    include = not invert
+            if include:
+                test_cases.append(TestCase(top, unit))
     return test_cases
 
 def run_cmd(output_file, cmd, *args):

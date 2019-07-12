@@ -40,6 +40,16 @@ class TestGhdlSimple(TestCase):
         self.assertTrue('PASSED  test_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
 
+    def test_multiple_per_file(self):
+        """Test that multiple test cases can exist in one file (GHDL)"""
+        code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/complex/multi-tc-per-file')
+        self.assertEqual(code, 0)
+        self.assertTrue('working!' in out)
+        self.assertTrue('PASSED  foo_tc' in out)
+        self.assertTrue('PASSED  bar_tc' in out)
+        self.assertFalse('baz' in out)
+        self.assertTrue('Test suite PASSED' in out)
+
     def test_failure(self):
         """Test that a single failing test case results in failure (GHDL)"""
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/failure')
