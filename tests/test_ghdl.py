@@ -176,7 +176,7 @@ class TestGhdlSpecific(TestCase):
 
     @skipIf(not ghdl_installed(), 'missing ghdl')
     def test_workdir(self):
-        """Test the workdir for the test case"""
+        """Test the workdir for the test case for GHDL"""
         with tempfile.TemporaryDirectory() as tempdir:
             local['cp'](DIR+'/complex/file-io/test_tc.vhd', tempdir)
             with local.cwd(tempdir):
