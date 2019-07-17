@@ -314,8 +314,9 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
     # something went wrong.
     failed = any(map(lambda ent: ent[0], results))
 
-    # Print a summary of the test case results.
-    output_file.write('\nFinal summary:\n')
+    # Print a summary of the test case results, in a way that's consistent with
+    # the other vhdeps targets.
+    output_file.write('\nSummary:\n')
     for code, test_case, _ in sorted(results):
         code = {
             0: 'PASSED ',
@@ -323,7 +324,7 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
             2: 'FAILED ',
             3: 'ERROR  ',
         }[code]
-        output_file.write(' * %s %s\n' % (code, test_case.unit))
+        output_file.write(' * %s %s.%s\n' % (code, test_case.lib, test_case.unit))
     if failed:
         output_file.write('Test suite FAILED\n')
     else:
