@@ -84,12 +84,12 @@ example:
 
     $ vhdeps ghdl StreamBuffer_*_tc
     ...
-    Final summary:
-     * PASSED  streambuffer_0_tc
-     * PASSED  streambuffer_200_tc
-     * PASSED  streambuffer_2_tc
-     * PASSED  streambuffer_4_tc
-     * PASSED  streambuffer_6_tc
+    Summary:
+     * PASSED  work.streambuffer_0_tc
+     * PASSED  work.streambuffer_200_tc
+     * PASSED  work.streambuffer_2_tc
+     * PASSED  work.streambuffer_4_tc
+     * PASSED  work.streambuffer_6_tc
     Test suite PASSED
 
 Here's some of the features this target supports:
@@ -112,13 +112,13 @@ example of what it all looks like:
 
     $ vhdeps vsim StreamBuffer_*_tc
     ...
-    # Regression test complete. Results:
-    #  - PASSED work.streambuffer_0_tc
-    #  - PASSED work.streambuffer_200_tc
-    #  - PASSED work.streambuffer_2_tc
-    #  - PASSED work.streambuffer_4_tc
-    #  - PASSED work.streambuffer_6_tc
-    # 5/5 test(s) passed
+    # Summary:
+     * PASSED  work.streambuffer_0_tc
+     * PASSED  work.streambuffer_200_tc
+     * PASSED  work.streambuffer_2_tc
+     * PASSED  work.streambuffer_4_tc
+     * PASSED  work.streambuffer_6_tc
+    Test suite PASSED
 
     $ vhdeps vsim StreamBuffer_0_tc --gui
     ...
@@ -127,21 +127,23 @@ example of what it all looks like:
 
 ![Modelsim screenshot](/.assets/modelsim.png?raw=true)
 
-The TCL script supports the following:
+The TCL script supports the following, among other things:
 
- - Incremental recompilation and rerunning in the GUI through the `resim`
+ - Incremental recompilation and rerunning in the GUI through the `rerun`
    command.
- - `resim` maintains your waveform view configuration (zoom level, signals,
+ - `rerun` maintains your waveform view configuration (zoom level, signals,
    etc.).
- - Initially, signals are automatically added for the toplevel test case, the
-   `uut` instance in the test case (if any) and the `tb` instance in the test
-   case (if any). Inputs are colored blue, outputs are colored yellow, and
-   internal signals are colored white to improve readability.
+ - By default, all signals in the toplevel test case entity and all its
+   immediate instantiations are added to the waveform view, and all signals in
+   the design are logged. Inputs are colored blue, outputs are colored yellow,
+   and internal signals are colored white to improve readability. This behavior
+   can be overridden with `--pragma vhdeps vsim wave-config-tcl <do file>` and
+   `--pragma vhdeps vsim no-log-all` pragmas in the test case file if desired.
  - When there are multiple test cases, the script executes all of them
-   initially without displaying any waveforms. You can then run `failure`
+   initially without displaying any waveforms. You can then run `debug`
    to run (one of) the failing test case(s) with waveforms enabled to
    debug it.
- - Automatic GUI vs. batch mode detection: in batch mode, Modelsim
+ - Automatic GUI vs. batch mode detection. In batch mode, Modelsim
    automatically exits with 0 or 1 depending on the result of the test suite.
 
 The script is only tested in Modelsim and Questasim so far, and requires some
