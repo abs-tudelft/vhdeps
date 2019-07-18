@@ -516,16 +516,14 @@ proc close_sim {} {
       }
 
       # Save the waveform state if this test is rerunnable; tests started with
-      # -fast are exempted, as their waveform view is never initialized. If we
-      # already have a wave configuration filename, save to that file; it might
-      # be user-specified. Otherwise, write a file in the library directory,
-      # which is usually a temporary directory made by vhdeps.
+      # -fast are exempted, as their waveform view is never initialized. We
+      # always write to a temporary file in our library working directory, so
+      # we don't accidentally override the user's script for the initial
+      # configuration.
       if {$rerun_test > -1} {
         set test_case [lindex $test_cases $current_test]
         dict with test_case {
-          if {$wave_config == {}} {
-            set wave_config ${libdir}/${lib}.${unit}.wave.cfg
-          }
+          set wave_config ${libdir}/${lib}.${unit}.wave.cfg
           write format wave $wave_config
         }
         lset test_cases $current_test $test_case
@@ -876,38 +874,37 @@ def _write_tcl(vhd_list, tcl_file, suppress_warnings, extra_flags, **kwargs):
             if ',' not in extra_flag:
                 raise ValueError('invalid value for -W')
             target, *flags = extra_flag.split(',')
-            if len(target) not in (1, 2):
-                raise ValueError('invalid value for -W')
-            if target[0] == 'c':
+            if target == 'c':
                 vcom_flags.extend(flags)
-            elif target[0] == 's':
+            elif target == 's':
                 vsim_flags.extend(flags)
             else:
                 raise ValueError('invalid value for -W')
-    vcom_flags = ' '.join(vcom_flags)
-    vsim_flags = ' '.join(vsim_flags)
 
     for vhd in vhd_list.order:
-        flags = '-quiet'
+        flags = ['-quiet']
         if vhd.version <= 1987:
-            flags += ' -87'
+            flags.append('-87')
         elif vhd.version <= 1993:
-            flags += ' -93'
+            flags.append('-93')
         elif vhd.version <= 2002:
-            flags += ' -2002'
+            flags.append('-2002')
         elif vhd.version <= 2008:
-            flags += ' -2008'
+            flags.append('-2008')
         else:
             raise ValueError('VHDL version %d is not supported' % vhd.version)
-        flags += vcom_flags
 
         # Handle vcom pragmas.
         with open(vhd.fname, 'r') as fil:
             contents = fil.read()
-        for match in re.finditer(r'\-\-\s*pragma\s+vhdeps\s+vcom\s+[^\n]\n', contents):
+        for match in re.finditer(r'\-\-\s*pragma\s+vhdeps\s+vcom\s+([^\n]+)\n', contents):
             pragma = match.group(1)
             if pragma.startswith('flags '):
-                flags += pragma[5:]
+                flags.append(pragma[6:])
+
+        # Flags specified on the command line take precedence over pragmas.
+        flags.extend(vcom_flags)
+        flags = ' '.join(flags)
 
         tcl_file.write('  add_source {%s} {%s} {%s}\n' % (vhd.fname, vhd.lib, flags))
 
@@ -915,24 +912,28 @@ def _write_tcl(vhd_list, tcl_file, suppress_warnings, extra_flags, **kwargs):
     for test_case in test_cases:
         suppress_warnings_tc = suppress_warnings
         log_all = True
-        flags = vsim_flags
+        flags = []
         wave_config = ''
 
         # Handle vsim pragmas.
         with open(test_case.file.fname, 'r') as fil:
             contents = fil.read()
-        for match in re.finditer(r'\-\-\s*pragma\s+vhdeps\s+vsim\s+[^\n]\n', contents):
+        for match in re.finditer(r'\-\-\s*pragma\s+vhdeps\s+vsim\s+([^\n]+)\n', contents):
             pragma = match.group(1)
             if pragma == 'suppress-warnings':
                 suppress_warnings_tc = True
             elif pragma == 'no-log-all':
                 log_all = False
             elif pragma.startswith('flags '):
-                flags += pragma[5:]
+                flags.append(pragma[6:])
             elif pragma.startswith('wave-config-tcl '):
                 wave_config = pragma.split(maxsplit=1)[1]
 
-        tcl_file.write('  add_test {%s} {%s} {%s}\\\n    {%s} {%s} %s %s {%s}\n' % (
+        # Flags specified on the command line take precedence over pragmas.
+        flags.extend(vsim_flags)
+        flags = ' '.join(flags)
+
+        tcl_file.write('  add_test {%s} {%s} {%s} \\\n    {%s} {%s} %s %s {%s}\n' % (
             test_case.file.lib, test_case.unit, os.path.dirname(test_case.file.fname),
             test_case.file.get_timeout(), flags, suppress_warnings_tc, log_all, wave_config))
 

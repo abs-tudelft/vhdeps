@@ -149,7 +149,7 @@ class TestVsimMocked(TestCase):
         self.assertEqual(code, 0)
         self.assertTrue('add_source {' + DIR + '/simple/all-good/test_tc.vhd} '
                         '{work} {-quiet -2008}' in out)
-        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/simple/all-good}')
+        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/simple/all-good}' in out)
 
     def test_tcl_multi(self):
         """Test TCL output for a test suite to stdout"""
@@ -159,8 +159,8 @@ class TestVsimMocked(TestCase):
                         '{work} {-quiet -2008}' in out)
         self.assertTrue('add_source {' + DIR + '/simple/multi-version/foo_tc.93.vhd} '
                         '{work} {-quiet -93}' in out)
-        self.assertTrue('add_test {work} {bar_tc} {' + DIR + '/simple/multi-version}')
-        self.assertTrue('add_test {work} {foo_tc} {' + DIR + '/simple/multi-version}')
+        self.assertTrue('add_test {work} {bar_tc} {' + DIR + '/simple/multi-version}' in out)
+        self.assertTrue('add_test {work} {foo_tc} {' + DIR + '/simple/multi-version}' in out)
 
     def test_tcl_versions(self):
         """Test TCL output for a test suite with mixed VHDL versions to
@@ -175,7 +175,50 @@ class TestVsimMocked(TestCase):
                         '{work} {-quiet -2002}' in out)
         self.assertTrue('add_source {' + DIR + '/vsim/supported-versions/test_tc.08.vhd} '
                         '{work} {-quiet -2008}' in out)
-        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/vsim/supported-versions}')
+        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/vsim/supported-versions}' in out)
+
+    def test_tcl_vsim_flags(self):
+        """Test vsim flags using -W and pragma"""
+        code, out, _ = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/vsim/flags',
+            '-Ws,-foo,-bar', '-Ws,-baz')
+        self.assertEqual(code, 0)
+        self.assertTrue('{1 ms} {-a -b -c -novopt -foo -bar -baz}' in out)
+
+    def test_tcl_vcom_flags(self):
+        """Test vcom flags using -W and pragma"""
+        code, out, _ = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/vsim/flags',
+            '-Wc,-foo,-bar')
+        self.assertEqual(code, 0)
+        self.assertTrue('add_source {' + DIR + '/vsim/flags/test_tc.vhd} '
+                        '{work} {-quiet -2008 -d -e -foo -bar}' in out)
+
+    def test_invalid_flags(self):
+        """Test invalid flags for -W for vsim"""
+        code, _, err = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/simple/all-good',
+            '-Wx,-foo,-bar')
+        self.assertNotEqual(code, 0)
+        self.assertTrue('invalid value for -W' in err)
+
+        code, _, err = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/simple/all-good',
+            '-Ws')
+        self.assertNotEqual(code, 0)
+        self.assertTrue('invalid value for -W' in err)
+
+    def test_tcl_vcom_pragmas(self):
+        """Test vsim-specific pragmas"""
+        code, out, _ = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/vsim/pragma-1')
+        self.assertEqual(code, 0)
+        self.assertTrue('} True True {hello.do}' in out)
+
+        code, out, _ = run_vhdeps(
+            'vsim', '--tcl', '-i', DIR+'/vsim/pragma-2')
+        self.assertEqual(code, 0)
+        self.assertTrue('} False False {}' in out)
 
     def test_tcl_to_file(self):
         """Test TCL output to a file"""
