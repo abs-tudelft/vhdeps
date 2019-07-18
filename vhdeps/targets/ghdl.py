@@ -324,7 +324,7 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
             2: 'FAILED ',
             3: 'ERROR  ',
         }[code]
-        output_file.write(' * %s %s.%s\n' % (code, test_case.lib, test_case.unit))
+        output_file.write(' * %s %s.%s\n' % (code, test_case.file.lib, test_case.unit))
     if failed:
         output_file.write('Test suite FAILED\n')
     else:

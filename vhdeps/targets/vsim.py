@@ -39,13 +39,457 @@ _HEADER = """\
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
+#------------------------------------------------------------------------------
+# Global variables
+#------------------------------------------------------------------------------
+
+# List of all non-standard library names in use by the project.
 quietly set libs [list]
+
+# Absolute path to the directory that we compile the libraries into.
 quietly set libdir [pwd]
+
+# Whether the modelsim.ini in a test case working directory was created by us
+# (and thus should be cleaned up) or was created by the user.
 quietly set del_modelsim_ini false
+
+# List of all source files. Every entry is a dictionary with the following
+# keys:
+#  - fname: the source filename.
+#  - lib: the name of the library it should be compiled into.
+#  - flags: any flags that should be passed to vcom.
+#  - stamp: timestamp when this file was last compiled, or 0 if it hasn't been
+#    compiled yet. This is matched with the file's mtime when looking for|
+#    changes since the previous compilation.
 quietly set sources [list]
+
+# List of all test cases. Every entry is a dictionary with the following keys:
+#  - lib: the library containing the test case.
+#  - unit: the name of the test case entity.
+#  - workdir: the directory that the test case should run relative to, such
+#    that any VHDL file I/O relative paths are resolved correctly.
+#  - timeout: timeout for the test case.
+#  - flags: any flags that should be passed to vsim.
+#  - suppress_warnings: whether numeric_std warnings and the likes should be
+#    suppressed.
+#  - log_all: whether all signals in the entire system should be logged by
+#    default. This is convenient when debugging because you don't have to rerun
+#    every time you add a signal, but can be costly for large tests.
+#  - wave_config: location of a TCL script that is run before and after the
+#    test case to set up the waveform viewer, or empty if the default waveform
+#    config should be used. The script is run before the test to ensure that
+#    all signals needed have been added properly and thus will be logged, and
+#    after the test such that the waveform zoom level and position is correct
+#    in case the script sets this.
+#  - result: the result of the test case. One of "unknown", "passed",
+#    "timeout", "failed", or "error".
+#  - result_valid: whether the aforementioned result is up-to-date. Any
+#    recompilation where any files changed clears this flag.
 quietly set test_cases [list]
+
+# The index in test_cases of the currently open test, or -1 if none.
 quietly set current_test -1
+
+# The index of the previously run test case.
 quietly set rerun_test -1
+
+
+#------------------------------------------------------------------------------
+# Helper commands, not intended to be called by the user interactively
+#------------------------------------------------------------------------------
+
+# Adds a source to the source list.
+proc add_source {fname lib flags} {
+  global sources libs
+  close_sim
+
+  # Make sure the file exists.
+  if {![file exists $fname]} {
+    error "$fname does not exist."
+    return
+  }
+
+  # Make sure the library exists; create it if it doesn't yet.
+  if {[lsearch $libs $lib] == -1} {
+    vlib $lib
+    lappend libs $lib
+  }
+
+  # If the file is already in the compile order, just set its flags and return.
+  foreach source $sources {
+    if {[dict get $source fname] == $fname} {
+      set flags new_flags
+      return
+    }
+  }
+
+  # Add the file.
+  lappend sources [dict create  \\
+                   fname $fname \\
+                   lib   $lib   \\
+                   flags $flags \\
+                   stamp 0]
+}
+
+# Adds a test case to the test case list. Returns its index/ID.
+proc add_test {lib unit workdir timeout {config {}}} {
+  global test_cases
+  set test_case [dict create        \\
+    lib $lib                        \\
+    unit $unit                      \\
+    workdir $workdir                \\
+    timeout $timeout                \\
+    flags {-novopt -assertdebug}    \\
+    suppress_warnings true          \\
+    log_all true                    \\
+    wave_config {}]
+
+  if {$config != {}} {
+    set test_case [dict merge $test_case $config]
+  }
+
+  dict set test_case result "unknown"
+  dict set test_case result_valid false
+
+  lappend test_cases $test_case
+  return [expr {[llength $test_cases] - 1}]
+}
+
+# Adds signals matching a given pattern to a given group in the wave viewer,
+# coloring the signals based on their role in the simulation.
+proc add_signals_to_wave {
+  group pattern
+  {in_color #00FFFF}
+  {out_color #FFFF00}
+  {internal_color #FFFFFF}
+} {
+  catch {add wave -noupdate -expand -group $group $pattern}
+
+  set input_list    [lsort [find signals -in       $pattern]]
+  set output_list   [lsort [find signals -out      $pattern]]
+  set internal_list [lsort [find signals -internal $pattern]]
+
+  proc colorize {vhd_list color} {
+    foreach obj $vhd_list {
+      # get leaf name
+      set nam [lindex [split $obj /] end]
+      # change color
+      property wave $nam -color $color
+    }
+  }
+
+  colorize $input_list    $in_color
+  colorize $output_list   $out_color
+  colorize $internal_list $internal_color
+
+  WaveCollapseAll 0
+}
+
+# Run the given test case with the given integer index/ID.
+proc run_test_by_id {index {run_to {}} {fast {}}} {
+  global libdir libs del_modelsim_ini test_cases current_test rerun_test
+  global StdArithNoWarnings StdNumNoWarnings NumericStdNoWarnings
+
+  if {$fast == "-fast"} {
+    set fast true
+  } elseif {$fast == {}} {
+    set fast false
+  } else {
+    echo "flag must be -fast or nothing"
+    return
+  }
+
+  # Close any currently running simulation before starting a new one. This
+  # also cleans up the previous working directory if it wasn't the library
+  # dir, and cd's to $libdir. It might also mutate $test_cases, so we do this
+  # outside the dict with command.
+  close_sim
+
+  set test_case [lindex $test_cases $index]
+  dict with test_case {
+
+    # When we change to the working directory for the test case, modelsim will
+    # create or modify a modelsim.ini file. If modelsim creates it, we'd like
+    # to clean it up once we're done to avoid littering.
+    set del_modelsim_ini [expr ![file exists $workdir/modelsim.ini]]
+
+    # Write a file for vhdeps indicating which files must still be cleaned up.
+    # vhdeps can then clean them up if modelsim terminates before close_sim is
+    # called.
+    set outfile [open ".cleanup" w]
+    if {$del_modelsim_ini} {
+      puts $outfile $workdir/modelsim.ini
+    }
+    puts $outfile $workdir/vsim.wlf
+    close $outfile
+
+    # Change to the working directory for this test case. If that was no-op,
+    # just return.
+    cd $workdir
+
+    # Map the libraries to the ones in $libdir so we can access them.
+    foreach lib $libs {
+      vmap $lib $libdir/$lib
+    }
+
+    # Give the command to initialize the simulation.
+    eval "vsim $flags $lib.$unit"
+
+    # Enable or disable library warnings based on preferences.
+    set StdArithNoWarnings $suppress_warnings
+    set StdNumNoWarnings $suppress_warnings
+    set NumericStdNoWarnings $suppress_warnings
+
+    # Add signals to the waveform if we're not running in batch mode.
+    if {![batch_mode] && !$fast} {
+
+      # Add all signals to the log if requested.
+      if {$log_all} {
+        catch {add log -recursive *}
+      }
+
+      # If we've run this test case before or the user specified a waveform
+      # configuration file for the test case manually, load that configuration
+      # instead of setting up the defaults.
+      if {[file exists $wave_config]} {
+        do $wave_config
+      } else {
+        configure wave -signalnamewidth 1
+        add_signals_to_wave TC sim:/[string tolower $unit]/*
+        configure wave -namecolwidth 256
+        configure wave -valuecolwidth 192
+      }
+
+    }
+
+    # Run until either the test case terminates using a failure report, by
+    # event starvation, or due to a timeout. Failure causes a break, which we
+    # don't want killing this script, so we have to wrap it in onbreak resume.
+    onbreak resume
+    if {$run_to != {}} {
+      run $run_to
+    } else {
+      run $timeout
+    }
+    onbreak ""
+
+    # To detect which of the three things occurred, we need to do some arcane
+    # stuff, because unfortunately there doesn't seem to be a direct query for
+    # it in modelsim. Note that $result is part of the test case dictionary, so
+    # the dict implicitely gets updated as well.
+    set status1 [runStatus -full]
+    onbreak resume
+    run -step
+    onbreak ""
+    set status2 [runStatus -full]
+    echo $status1 $status2
+    if {$status2 eq "ready end"} {
+      set result passed
+    } elseif {$status1 eq "ready end"} {
+      set result timeout
+    } else {
+      set result failed
+    }
+    set result_valid true
+
+    # Clean up the GUI.
+    if {![batch_mode]} {
+
+      # The run -step command (and possibly the run $timeout command) will have
+      # opened and focused a text editor for whatever VHDL source line was last
+      # executed. We want to pull the waveform view forward instead, since that
+      # actually contains relevant information.
+      foreach window [view] {
+        if {[string first ".wave" $window] != -1} {
+          view $window
+          break
+        }
+      }
+
+      # If we have a waveform configuration file, run it again to also restore
+      # stuff like horizontal position and zoom. We have to run it twice to
+      # both ensure that all the signals viewed by the user are logged and that
+      # the zoom level is correct. If we don't have a file, just zoom full.
+      if {!$fast} {
+        if {[file exists $wave_config]} {
+          delete wave *
+          do $wave_config
+        } else {
+
+          # It would be nice to zoom in on the part of the test case that's
+          # actually doing something versus the entire timeout period, but
+          # unfortunately there doesn't seem to be a way to detect when this is.
+          # Things that have been attempted:
+          #  - Querying the various simulation status commands and (documented)
+          #    variables for timestamps. These are invariably equal to $timeout.
+          #  - Using a cursor; the idea was to make one, set it to the timeout
+          #    time, and then move it backward to the previous event. But there's
+          #    no such command.
+          #  - Using run -all in conjunction with the after command to check the
+          #    current simulation time every few milliseconds and asynchronously
+          #    stop it once the timeout is reached. Unfortunately, this locks up
+          #    the modelsim GUI.
+          #  - Calling run <timestep> inside a loop, heuristically determining
+          #    the timestep to balance simulation kernel time with TCL execution
+          #    time. This has multiple problems: A) in order to detect whether
+          #    the simulation is done a run -step is needed, which opens a text
+          #    editor with breakpoint etc and is therefore slow; B) the time
+          #    command does not work on run for some reason, so the CPU time
+          #    needs to be determined in some other way; C) if the user presses
+          #    the stop button during the simulation this doesn't break out of
+          #    the loop.
+          # So this will have to make do.
+          wave zoom full
+
+        }
+      }
+    }
+  }
+
+  # Update the test_cases global with the updated dict.
+  lset test_cases $index $test_case
+
+  # Indicate that we're currently in a simulation environment for the test case
+  # we just ran.
+  set current_test $index
+
+  # If we're running in fast (test suite) mode, close the simulation
+  # immediately and clear the rerun_test flag. Otherwise set rerun_test to this
+  # test case.
+  if {$fast} {
+    set rerun_test -1
+    close_sim
+  } else {
+    set rerun_test $index
+  }
+
+  # Return the test case result.
+  return $result
+}
+
+
+#------------------------------------------------------------------------------
+# Commands that the user may call interactively
+#------------------------------------------------------------------------------
+
+# Compile sources added with add_source incrementally. If called with -force,
+# all files will be recompiled; otherwise the file timestamps are used.
+proc recompile {{force {}}} {
+  global sources test_cases
+  close_sim
+
+  # Once we have to compile something, all subsequent files are recompiled as
+  # well, since they may depend on the changed file. $compile tracks whether
+  # we've had to recompile anything yet. It's simply initialized to true when
+  # we want to recompile everything.
+  if {$force == "-force"} {
+    set compile true
+  } elseif {$force == {}} {
+    set compile false
+  } else {
+    echo "Invalid arguments, must be -force or nothing."
+    return
+  }
+
+  set index -1
+  foreach source $sources {
+    dict with source {
+
+      # If the file has been modified since it was last compiled, set the
+      # $compile flag.
+      set new_stamp [file mtime $fname]
+      if {$new_stamp > $stamp} {
+        set compile true
+      }
+
+      # Compile the file if we need to.
+      if {$compile} {
+        echo "Compiling \\(-work $lib $flags\\):" [file tail $fname]
+        set stamp $new_stamp
+        eval vcom "-quiet -work $lib $flags $fname"
+      }
+    }
+    lset sources [incr index] $source
+  }
+
+  # If we had to recompile anything, mark all test case results as out of date.
+  if {$compile} {
+    for {set index 0} {$index < [llength $test_cases]} {incr index} {
+      set test_case [lindex $test_cases $index]
+      dict set test_case result_valid false
+      lset test_cases $index $test_case
+    }
+  }
+}
+
+# Runs the given test by name, which can include wildcards. The first matching
+# test case found in the list of test cases is run. If any source files changed
+# since the last compilation, they are recompiled. If no name is specified and
+# there is only one test, it is run; otherwise the names of all test cases are
+# returned.
+proc test {{name {}}} {
+  global test_cases
+
+  if {$name != {}} {
+
+    # Get the test case ID for the given name through pattern matching.
+    set test_index -1
+    for {set index 0} {$index < [llength $test_cases]} {incr index} {
+      set test_case [lindex $test_cases $index]
+      dict with test_case {
+        if {[string match $name "$lib.$unit"] || [string match $name "$unit"]} {
+          set test_index $index
+          break
+        }
+      }
+    }
+    if {$test_index <= -1} {
+      for {set index 0} {$index < [llength $test_cases]} {incr index} {
+        set test_case [lindex $test_cases $index]
+        dict with test_case {
+          if {[string match "*$name*" "$lib.$unit"]} {
+            set test_index $index
+            break
+          }
+        }
+      }
+    }
+    if {$test_index <= -1} {
+      echo "Test case not found."
+      return
+    }
+
+  } elseif {[llength $test_cases] == 1} {
+
+    # Run the only test case.
+    set test_index 0
+
+  } else {
+
+    # Print the names of all test cases and return without simulating.
+    echo "Available test cases:"
+    foreach test_case $test_cases {
+      dict with test_case {
+        if {$result == "unknown"} {
+          echo " - $lib.$unit"
+        } elseif {!$result_valid} {
+          echo " - $lib.$unit ($result/out of date)"
+        } else {
+          echo " - $lib.$unit ($result)"
+        }
+      }
+    }
+    return
+
+  }
+
+  # Make sure everything is compiled.
+  recompile
+
+  # Run the test case.
+  return [run_test_by_id $test_index]
+}
 
 # Closes any running simulation, and changes the working directory back to the
 # library dir.
@@ -112,364 +556,13 @@ proc close_sim {} {
     # Also delete the waveform data.
     file delete $workdir/vsim.wlf
 
+    # Since we just handled the deletions, we can get rid of the .cleanup file
+    # we created for vhdeps in case we wouldn't get here.
+    file delete ".cleanup"
+
   }
 
 }
-
-# Compile sources added with add_source incrementally.
-proc compile_sources {{recompile false}} {
-  global sources test_cases
-  close_sim
-
-  # Once we have to compile something, all subsequent files are recompiled as
-  # well, since they may depend on the changed file. $compile tracks whether
-  # we've had to recompile anything yet. It's simply initialized to true when
-  # we want to recompile everything.
-  set compile $recompile
-
-  set index -1
-  foreach source $sources {
-    dict with source {
-
-      # If the file has been modified since it was last compiled, set the
-      # $compile flag.
-      set new_stamp [file mtime $fname]
-      if {$new_stamp > $stamp} {
-        set compile true
-      }
-
-      # Compile the file if we need to.
-      if {$compile} {
-        echo "Compiling \\(-work $lib $flags\\):" [file tail $fname]
-        set stamp $new_stamp
-        eval vcom "-quiet -work $lib $flags $fname"
-      }
-    }
-    lset sources [incr index] $source
-  }
-
-  # If we had to recompile anything, mark all test case results as out of date.
-  if {$compile} {
-    for {set index 0} {$index < [llength $test_cases]} {incr index} {
-      set test_case [lindex $test_cases $index]
-      dict set test_case result_valid false
-      lset test_cases $index $test_case
-    }
-  }
-}
-
-# Shorthand for recompiling all sources.
-proc recompile_sources {} {
-  compile_sources true
-}
-
-# Adds a source to the source list.
-proc add_source {fname lib flags} {
-  global sources libs
-  close_sim
-
-  # Make sure the file exists.
-  if {![file exists $fname]} {
-    error "$fname does not exist."
-    return
-  }
-
-  # Make sure the library exists; create it if it doesn't yet.
-  if {[lsearch $libs $lib] == -1} {
-    vlib $lib
-    lappend libs $lib
-  }
-
-  # If the file is already in the compile order, just set its flags and return.
-  foreach source $sources {
-    if {[dict get $source fname] == $fname} {
-      set flags new_flags
-      return
-    }
-  }
-
-  # Add the file.
-  lappend sources [dict create  \
-                   fname $fname \
-                   lib   $lib   \
-                   flags $flags \
-                   stamp 0]
-}
-
-# Adds a test case to the test case list. Returns its index/ID.
-proc add_test {lib unit workdir timeout {config {}}} {
-  global test_cases
-  set test_case [dict create        \
-    lib $lib                        \
-    unit $unit                      \
-    workdir $workdir                \
-    timeout $timeout                \
-    flags {-novopt -assertdebug}    \
-    suppress_warnings true          \
-    log_all true                    \
-    wave_config {}]
-
-  if {$config != {}} {
-    set test_case [dict merge $test_case $config]
-  }
-
-  dict set test_case result "unknown"
-  dict set test_case result_valid false
-
-  lappend test_cases $test_case
-  return [expr {[llength $test_cases] - 1}]
-}
-
-# Adds signals matching a given pattern to a given group in the wave viewer,
-# coloring the signals based on their role in the simulation.
-proc add_signals_to_wave {
-  group pattern
-  {in_color #00FFFF}
-  {out_color #FFFF00}
-  {internal_color #FFFFFF}
-} {
-  catch {add wave -noupdate -expand -group $group $pattern}
-
-  set input_list    [lsort [find signals -in       $pattern]]
-  set output_list   [lsort [find signals -out      $pattern]]
-  set internal_list [lsort [find signals -internal $pattern]]
-
-  proc colorize {vhd_list color} {
-    foreach obj $vhd_list {
-      # get leaf name
-      set nam [lindex [split $obj /] end]
-      # change color
-      property wave $nam -color $color
-    }
-  }
-
-  colorize $input_list    $in_color
-  colorize $output_list   $out_color
-  colorize $internal_list $internal_color
-
-  WaveCollapseAll 0
-}
-
-# Run the given test case with the given integer index/ID.
-proc run_test_by_id {index {run_to {}}} {
-  global libdir libs del_modelsim_ini test_cases current_test rerun_test
-  global StdArithNoWarnings StdNumNoWarnings NumericStdNoWarnings
-
-  # Close any currently running simulation before starting a new one. This
-  # also cleans up the previous working directory if it wasn't the library
-  # dir, and cd's to $libdir. It might also mutate $test_cases, so we do this
-  # outside the dict with command.
-  close_sim
-
-  set test_case [lindex $test_cases $index]
-  dict with test_case {
-
-    # When we change to the working directory for the test case, modelsim will
-    # create or modify a modelsim.ini file. If modelsim creates it, we'd like
-    # to clean it up once we're done to avoid littering.
-    set del_modelsim_ini [file exists $workdir/modelsim.ini]
-
-    # Change to the working directory for this test case. If that was no-op,
-    # just return.
-    cd $workdir
-
-    # Map the libraries to the ones in $libdir so we can access them.
-    foreach lib $libs {
-      vmap $lib $libdir/$lib
-    }
-
-    # Give the command to initialize the simulation.
-    eval "vsim $flags $lib.$unit"
-
-    # Enable or disable library warnings based on preferences.
-    set StdArithNoWarnings $suppress_warnings
-    set StdNumNoWarnings $suppress_warnings
-    set NumericStdNoWarnings $suppress_warnings
-
-    # Add signals to the waveform if we're not running in batch mode.
-    if {![batch_mode]} {
-
-      # Add all signals to the log if requested.
-      if {$log_all} {
-        catch {add log -recursive *}
-      }
-
-      # If we've run this test case before or the user specified a waveform
-      # configuration file for the test case manually, load that configuration
-      # instead of setting up the defaults.
-      if {[file exists $wave_config]} {
-        do $wave_config
-      } else {
-        configure wave -signalnamewidth 1
-        add_signals_to_wave TC sim:/[string tolower $unit]/*
-        configure wave -namecolwidth 256
-        configure wave -valuecolwidth 192
-      }
-
-    }
-
-    # Run until either the test case terminates using a failure report, by
-    # event starvation, or due to a timeout. Failure causes a break, which we
-    # don't want killing this script, so we have to wrap it in onbreak resume.
-    onbreak resume
-    if {$run_to != {}} {
-      run $run_to
-    } else {
-      run $timeout
-    }
-    onbreak ""
-
-    # To detect which of the three things occurred, we need to do some arcane
-    # stuff, because unfortunately there doesn't seem to be a direct query for
-    # it in modelsim. Note that $result is part of the test case dictionary, so
-    # the dict implicitely gets updated as well.
-    set status1 [runStatus -full]
-    onbreak resume
-    run -step
-    onbreak ""
-    set status2 [runStatus -full]
-    if {$status2 eq "ready end"} {
-      set result passed
-    } elseif {$status2 eq "ready step"} {
-      set result timeout
-    } else {
-      set result failed
-    }
-
-    # Clean up the GUI.
-    if {![batch_mode]} {
-
-      # The run -step command (and possibly the run $timeout command) will have
-      # opened and focused a text editor for whatever VHDL source line was last
-      # executed. We want to pull the waveform view forward instead, since that
-      # actually contains relevant information.
-      foreach window [view] {
-        if {[string first ".wave" $window] != -1} {
-          view $window
-          break
-        }
-      }
-
-      # If we have a waveform configuration file, run it again to also restore
-      # stuff like horizontal position and zoom. We have to run it twice to
-      # both ensure that all the signals viewed by the user are logged and that
-      # the zoom level is correct. If we don't have a file, just zoom full.
-      if {[file exists $wave_config]} {
-        delete wave *
-        do $wave_config
-      } else {
-
-        # It would be nice to zoom in on the part of the test case that's
-        # actually doing something versus the entire timeout period, but
-        # unfortunately there doesn't seem to be a way to detect when this is.
-        # Things that have been attempted:
-        #  - Querying the various simulation status commands and (documented)
-        #    variables for timestamps. These are invariably equal to $timeout.
-        #  - Using a cursor; the idea was to make one, set it to the timeout
-        #    time, and then move it backward to the previous event. But there's
-        #    no such command.
-        #  - Using run -all in conjunction with the after command to check the
-        #    current simulation time every few milliseconds and asynchronously
-        #    stop it once the timeout is reached. Unfortunately, this locks up
-        #    the modelsim GUI.
-        #  - Calling run <timestep> inside a loop, heuristically determining
-        #    the timestep to balance simulation kernel time with TCL execution
-        #    time. This has multiple problems: A) in order to detect whether
-        #    the simulation is done a run -step is needed, which opens a text
-        #    editor with breakpoint etc and is therefore slow; B) the time
-        #    command does not work on run for some reason, so the CPU time
-        #    needs to be determined in some other way; C) if the user presses
-        #    the stop button during the simulation this doesn't break out of
-        #    the loop.
-        # So this will have to make do.
-        wave zoom full
-
-      }
-    }
-  }
-
-  # Update the test_cases global with the updated dict.
-  lset test_cases $index $test_case
-
-  # Indicate that we're currently in a simulation environment for the test case
-  # we just ran.
-  set current_test $index
-  set rerun_test $index
-
-  # Return the test case result.
-  return $result
-}
-
-# Runs the given test by name, which can include wildcards. The first matching
-# test case found in the list of test cases is run. If any source files changed
-# since the last compilation, they are recompiled. If no name is specified and
-# there is only one test, it is run; otherwise the names of all test cases are
-# returned.
-proc run_test {{name {}}} {
-  global test_cases
-
-  if {$name != {}} {
-
-    # Get the test case ID for the given name through pattern matching.
-    set test_index -1
-    for {set index 0} {$index < [llength $test_cases]} {incr index} {
-      set test_case [lindex $test_cases $index]
-      dict with test_case {
-        if {[string match $name "$lib.$unit"] || [string match $name "$unit"]} {
-          set test_index $index
-          break
-        }
-      }
-    }
-    if {$test_index <= -1} {
-      for {set index 0} {$index < [llength $test_cases]} {incr index} {
-        set test_case [lindex $test_cases $index]
-        dict with test_case {
-          if {[string match "*$name*" "$lib.$unit"]} {
-            set test_index $index
-            break
-          }
-        }
-      }
-    }
-    if {$test_index <= -1} {
-      echo "Test case not found."
-      return
-    }
-
-  } elseif {[llength $test_cases] == 1} {
-
-    # Run the only test case.
-    set test_index 0
-
-  } else {
-
-    # Print the names of all test cases and return without simulating.
-    echo "Available test cases:"
-    foreach test_case $test_cases {
-      dict with test_case {
-        if {$result == "unknown"} {
-          echo " - $lib.$unit"
-        } elseif {!$result_valid} {
-          echo " - $lib.$unit ($result/out of date)"
-        } else {
-          echo " - $lib.$unit ($result)"
-        }
-      }
-    }
-    return
-
-  }
-
-  # Make sure everything is compiled.
-  compile_sources
-
-  # Run the test case.
-  return [run_test_by_id $test_index]
-}
-
-# Shorthand for run_test.
-proc test {{name {}}} {return [run_test $name]}
 
 # This command re-runs the previous or current test case, if any.
 proc rerun {} {
@@ -490,39 +583,76 @@ proc rerun {} {
   }
 
   # Make sure everything is compiled.
-  compile_sources
+  recompile
 
   # Rerun the test case.
   return [run_test_by_id $rerun_test $run_to]
 }
 
-# This command runs all test cases.
-proc all {} {
+# This command runs all test cases. If a filename is passed, the summary is
+# saved to that file in addition to being echoed.
+proc suite {{outfile {}}} {
   global test_cases
 
   # Make sure everything is compiled.
-  compile_sources
+  recompile
 
   # Run all test cases that are out of date or haven't been simulated yet.
   for {set index 0} {$index < [llength $test_cases]} {incr index} {
     set test_case [lindex $test_cases $index]
     dict with test_case {
       if {$result == "unknown" || !$result_valid} {
-        run_test_by_id $index
+        run_test_by_id $index {} -fast
       }
     }
   }
 
-  # Close the final simulation to clean up after ourselves.
-  close_sim
-
   # Print the test result summary.
-  summary
-
+  return [summary $outfile]
 }
 
-# Summarizes the test results (so far).
-proc summary {} {
+# This command intelligently opens the first failing test case. If a previously
+# failing test case passes, it runs all out-of-date tests and then calls itself
+# again if there are still failures.
+proc debug {} {
+  global test_cases
+
+  # Look for tests that are known to have failed or timed out.
+  set test_index -1
+  for {set index 0} {$index < [llength $test_cases]} {incr index} {
+    set test_case [lindex $test_cases $index]
+    dict with test_case {
+      if {$result_valid && $result != "passed" && $result != "unknown"} {
+        set test_index $index
+      }
+    }
+  }
+
+  # If we found such a test, run it. If it fails, let the user debug it; if it
+  # passes now, continue by (re)running the rest of the suite.
+  if {$test_index != -1} {
+    recompile
+    if {[run_test_by_id $test_index] == "passed"} {
+      echo "Test case passes now! Checking the rest of the suite again..."
+      after 1500
+    } else {
+      return "failed"
+    }
+  }
+
+  # Run the entire suite again. If there are failures still, recursively call
+  # ourselves.
+  if {[suite] == "passed"} {
+    echo "No more failures!"
+    return "passed"
+  } else {
+    return [debug]
+  }
+}
+
+# Summarizes the test results (so far). If a filename is passed, the summary is
+# saved to that file in addition to being echoed.
+proc summary {{outfile {}}} {
   global test_cases
 
   # Order the test cases by importance, such that the most important ones are
@@ -543,8 +673,8 @@ proc summary {} {
       } else { # unknown
         set weight 8
       }
-      if {$result_valid} {
-        set weight [expr {weight + 1}]
+      if {!$result_valid} {
+        set weight [expr {$weight + 1}]
       }
     }
     return $weight
@@ -560,202 +690,143 @@ proc summary {} {
       return 0
     }
   }
-  set test_case_order [lsort -command order_test -indices test_cases]
+  set test_case_order [lsort -command order_test -indices $test_cases]
+
+  # Open the output file, if any.
+  if {$outfile != {}} {
+    set outfile [open $outfile w]
+  }
+
+  # Writes a line to the user and to the given output file channel.
+  proc println {outfile line} {
+    echo $line
+    if {$outfile != {}} {
+      puts $outfile $line
+    }
+  }
 
   # Print the summary, in a way that's consistent with the other vhdeps
   # targets.
-  echo "Summary:"
+  println $outfile "Summary:"
   set done true
   set passed true
   foreach index $test_case_order {
     set test_case [lindex $test_cases $index]
     dict with test_case {
-      set line [format " * %-7s %s" [string toupper $result] "$lib.$unit"]
-      if {!$result_valid} {
-        set line "$line (out of date)"
+      if {$result == "unknown"} {
+        set line " * ?       $lib.$unit"
         set done false
+      } else {
+        set line [format " * %-7s %s" [string toupper $result] "$lib.$unit"]
+        if {!$result_valid} {
+          set line "$line (out of date)"
+          set done false
+        }
       }
+      println $outfile $line
       if {$result != "passed"} {
         set passed false
       }
-      echo $line
     }
   }
   if {!$done} {
-    echo "Test suite incomplete"
+    println $outfile "Test suite incomplete"
+    return "incomplete"
   } elseif {$passed} {
-    echo "Test suite PASSED"
+    println $outfile "Test suite PASSED"
+    return "passed"
   } else {
-    echo "Test suite FAILED"
+    println $outfile "Test suite FAILED"
+    return "failed"
+  }
+
+  # Close the output file, if any.
+  if {$outfile != {}} {
+    close $outfile
   }
 }
 
-#proc close_all_sources {} {
-#  set windows [view]
-#  foreach window $windows {
-#    if {[string first ".source" $window] != -1} {
-#      noview $window
-#    }
-#  }
-#}
-#
-#proc simulate {lib top {duration -all}} {
-#  global last_sim
-#  set last_sim [list $lib $top $duration]
-#
-#  compile_sources
-#
-#  vsim -novopt -assertdebug $lib.$top
-#  suppress_warnings
-#
-#  if {![batch_mode]} {
-#    catch {add log -recursive *}
-#    set lcname [string tolower $top]
-#    set tcname sim:/${lcname}/*
-#    set tbname sim:/${lcname}/tb/*
-#    set uutname sim:/${lcname}/tb/uut/*
-#    set tcsig [list "TC" $tcname]
-#    set tbsig [list "TB" $tbname]
-#    set uutsig [list "UUT" $uutname]
-#    configure wave -signalnamewidth 1
-#    add_waves [list $tcsig $tbsig $uutsig]
-#    configure wave -namecolwidth    256
-#    configure wave -valuecolwidth   192
-#  }
-#
-#  onbreak resume
-#  run $duration
-#  if {[batch_mode]} {
-#    run -step
-#    if {[runStatus -full] ne "ready end"} {
-#      exit -code 1
-#    } else {
-#      exit -code 0
-#    }
-#  }
-#  onbreak ""
-#  close_all_sources
-#
-#  wave zoom full
-#
-#  echo "Run 'resim' to run the simulation again."
-#}
-#
-#proc resim {} {
-#  global last_sim
-#  if {$last_sim == 0} {
-#    echo "No simulation to rerun."
-#    return 1
-#  }
-#  set lib [lindex $last_sim 0]
-#  set top [lindex $last_sim 1]
-#  set duration [lindex $last_sim 2]
-#
-#  compile_sources
-#  write format wave wave.cfg
-#  vsim -novopt -assertdebug $lib.$top
-#  suppress_warnings
-#  add log -recursive *
-#  onbreak resume
-#  run $duration
-#  onbreak ""
-#  close_all_sources
-#  do wave.cfg
-#  echo "Run 'resim' to run the simulation again."
-#}
-#
-#proc regression {} {
-#  global testcases
-#  global last_failure
-#  compile_sources
-#  set results [list]
-#  foreach testcase $testcases {
-#    set lib [lindex $testcase 0]
-#    set top [lindex $testcase 1]
-#    set duration [lindex $testcase 2]
-#    if [catch {
-#      vsim -novopt -assertdebug $lib.$top
-#      suppress_warnings
-#      onbreak resume
-#      run $duration
-#      set status1 [runStatus -full]
-#      run -step
-#      onbreak ""
-#      close_all_sources
-#      set status2 [runStatus -full]
-#      if {$status2 eq "ready end"} {
-#        lappend results [list $lib $top PASSED $duration]
-#      } elseif {$status1 eq "break simulation_stop"} {
-#        lappend results [list $lib $top FAILED $duration]
-#      } else {
-#        lappend results [list $lib $top TIMEOUT $duration]
-#      }
-#    }] {
-#      lappend results [list $lib $top fail $duration]
-#    }
-#  }
-#  echo "Regression test complete. Results:"
-#  foreach tcresult $results {
-#    set lib [lindex $tcresult 0]
-#    set top [lindex $tcresult 1]
-#    set result [lindex $tcresult 2]
-#    if {$result eq "PASSED"} {
-#      echo " - $result $lib.$top"
-#    }
-#  }
-#  set runs 0
-#  set passes 0
-#  set fails 0
-#  set last_failure 0
-#  foreach tcresult $results {
-#    set lib [lindex $tcresult 0]
-#    set top [lindex $tcresult 1]
-#    set result [lindex $tcresult 2]
-#    set duration [lindex $tcresult 3]
-#    incr runs
-#    if {$result ne "PASSED"} {
-#      incr fails
-#      echo " - $result $lib.$top"
-#      set last_failure [list $lib $top $duration]
-#    } else {
-#      incr passes
-#    }
-#  }
-#  echo "$passes/$runs test(s) passed"
-#  if [batch_mode] {
-#    if {$fails > 0} {
-#      exit -code 1
-#    } else {
-#      exit -code 0
-#    }
-#  } else {
-#    if {$fails > 0} {
-#      echo "Failure! Run 'regression' to recompile and try again, or 'failure' to simulate the last failure."
-#    } else {
-#      echo "Success! Run 'regression' to recompile and try again."
-#    }
-#  }
-#}
-#
-#proc failure {} {
-#  global last_failure
-#  if {$last_failure == 0} {
-#    echo "No failed simulation to run."
-#    return 1
-#  }
-#  set lib [lindex $last_failure 0]
-#  set top [lindex $last_failure 1]
-#  set duration [lindex $last_failure 2]
-#  simulate $lib $top $duration
-#}
-#
-## initialization
-#package require md5
-#set last_sim 0
-#set last_failure 0
-#set testcases [list]
-#set compile_list [list]
+# Lists the custom commands provided by this script with some basic docs.
+proc vhdeps_help {} {
+  echo "vhdeps commands:"
+  echo ""
+  echo "recompile     Compiles any sources that may have changed and their"
+  echo "              dependants. This is normally called automatically. Add"
+  echo "              -force to recompile all sources regardless of timestamp."
+  echo "              Note that any changes to the structure of the project may"
+  echo "              require vhdeps to be rerun."
+  echo ""
+  echo "test ?name?   If no name is specified, the names of all known test cases"
+  echo "              are printed. Otherwise, the name is treated as a pattern"
+  echo "              to select a test case. If there is a matching test case,"
+  echo "              it is run and stays open for waveform inspection."
+  echo ""
+  echo "close_sim     Closes an open simulation, cleaning up any temporary files"
+  echo "              left behind. This is normally called automatically."
+  echo ""
+  echo "rerun         Reruns the currently open or previously opened simulation."
+  echo "              If any files changed, they are recompiled. The waveform"
+  echo "              configuration is restored to its previous state."
+  echo ""
+  echo "suite         Runs the entire test suite and prints a summary. Pass a"
+  echo "              filename as argument to also write the summary to a file."
+  echo ""
+  echo "summary       Prints a summary of all current test case results. Pass a"
+  echo "              filename as argument to also write the summary to a file."
+  echo ""
+  echo "debug         Runs the first known-failing test case, recompiling"
+  echo "              sources if anything changed. If no test cases are known"
+  echo "              to fail, run the suite command to run everything, then"
+  echo "              try again."
+  echo ""
+  echo "vhdeps_help   Prints this help message."
+}
 
+
+#------------------------------------------------------------------------------
+# Startup command
+#------------------------------------------------------------------------------
+
+proc autorun {} {
+  global test_cases
+
+  # Generated code:
+"""
+
+_FOOTER = """\
+  # End of generated code.
+
+  # If we're running in batch mode, just run everything and return the result
+  # through the exit code.
+  if {[batch_mode]} {
+    if {[suite] != "passed"} {
+      exit -code 1
+    } else {
+      exit -code 0
+    }
+  }
+
+  # In GUI mode with one test case, initialize that test case and let the user
+  # interact with it. If there are multiple test cases, run everything and then
+  # let the user decide how to proceed.
+  if {[llength $test_cases] == 1} {
+    recompile
+    run_test_by_id 0
+    echo "--------"
+    echo {Useful commands: [rerun] to rerun the test, [vhdeps_help] for more info}
+  } else {
+    if {[suite] != "passed"} {
+      debug
+      echo "--------"
+      echo {Opened the first failing test. Useful commands: [debug] to try again, [vhdeps_help] for more}
+    } else {
+      echo "--------"
+      echo {Useful commands: [debug] to rerun the suite, [test <name>] to rerun/open a specific test, [vhdeps_help] for more}
+    }
+  }
+}
+
+autorun
 """
 
 def add_arguments(parser):
@@ -779,6 +850,7 @@ def _write_tcl(vhd_list, tcl_file, **kwargs):
     """Writes the TCL file for the given VHDL list and testcase pattern to
     `outfile`."""
     tcl_file.write(_HEADER)
+
     for vhd in vhd_list.order:
         flags = '-quiet'
         if vhd.version <= 1987:
@@ -791,23 +863,17 @@ def _write_tcl(vhd_list, tcl_file, **kwargs):
             flags += ' -2008'
         else:
             raise ValueError('VHDL version %d is not supported' % vhd.version)
-        tcl_file.write('quietly add_source {%s} {%s} {%s}\n' % (vhd.fname, vhd.lib, flags))
+        tcl_file.write('  add_source {%s} {%s} {%s}\n' % (vhd.fname, vhd.lib, flags))
 
     test_cases = get_test_cases(vhd_list, **kwargs)
     for test_case in test_cases:
-        tcl_file.write('quietly add_test %s %s "%s" "%s"\n' % (
+        tcl_file.write('  add_test %s %s "%s" "%s"\n' % (
             test_case.file.lib,
             test_case.unit,
             os.path.dirname(test_case.file.fname),
             test_case.file.get_timeout()))
-        #tcl_file.write('lappend testcases [list %s %s "%s"]\n' % (
-            #test_case.file.lib, test_case.unit, test_case.file.get_timeout()))
-    #if len(test_cases) == 1:
-        #test_case = test_cases[0]
-        #tcl_file.write('simulate %s %s "%s"\n' % (
-            #test_case.file.lib, test_case.unit, test_case.file.get_timeout()))
-    #else:
-        #tcl_file.write('regression\n')
+
+    tcl_file.write(_FOOTER)
 
 def _run(vhd_list, output_file, gui=False, **kwargs):
     """Runs this backend in the current working directory."""
@@ -827,6 +893,17 @@ def _run(vhd_list, output_file, gui=False, **kwargs):
     else:
         cmd = local['cat']['vsim.do'] | vsim
     exit_code, *_ = run_cmd(output_file, cmd)
+
+    # If the TCL script left us with a .cleanup file, delete the files listed
+    # in it.
+    if os.path.isfile('.cleanup'):
+        with open('.cleanup', 'r') as fildes:
+            for fname in fildes:
+                try:
+                    os.remove(fname.rstrip())
+                except OSError:
+                    pass
+        os.remove('.cleanup')
 
     # Forward vsim's exit code.
     return exit_code

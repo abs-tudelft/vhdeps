@@ -38,7 +38,7 @@ class TestGhdlSimple(TestCase):
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/all-good')
         self.assertEqual(code, 0)
         self.assertTrue('working!' in out)
-        self.assertTrue('PASSED  test_tc' in out)
+        self.assertTrue('PASSED  work.test_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
 
     def test_multiple_per_file(self):
@@ -46,8 +46,8 @@ class TestGhdlSimple(TestCase):
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/complex/multi-tc-per-file')
         self.assertEqual(code, 0)
         self.assertTrue('working!' in out)
-        self.assertTrue('PASSED  foo_tc' in out)
-        self.assertTrue('PASSED  bar_tc' in out)
+        self.assertTrue('PASSED  work.foo_tc' in out)
+        self.assertTrue('PASSED  work.bar_tc' in out)
         self.assertFalse('baz' in out)
         self.assertTrue('Test suite PASSED' in out)
 
@@ -56,7 +56,7 @@ class TestGhdlSimple(TestCase):
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/failure')
         self.assertEqual(code, 1)
         self.assertTrue('uh oh!' in out)
-        self.assertTrue('FAILED  test_tc' in out)
+        self.assertTrue('FAILED  work.test_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
     def test_partial_failure(self):
@@ -66,15 +66,15 @@ class TestGhdlSimple(TestCase):
         self.assertEqual(code, 1)
         self.assertTrue('working!' in out)
         self.assertTrue('uh oh!' in out)
-        self.assertTrue('FAILED  fail_tc' in out)
-        self.assertTrue('PASSED  pass_tc' in out)
+        self.assertTrue('FAILED  work.fail_tc' in out)
+        self.assertTrue('PASSED  work.pass_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
     def test_timeout(self):
         """Test that a timeout results in failure (GHDL)"""
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/timeout')
         self.assertEqual(code, 1)
-        self.assertTrue('TIMEOUT test_tc' in out)
+        self.assertTrue('TIMEOUT work.test_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
     def test_error(self):
@@ -97,7 +97,7 @@ class TestGhdlSimple(TestCase):
         self.assertEqual(code, 0)
         self.assertTrue('Warning: no simulation timeout specified for work.test_tc' in err)
         self.assertTrue('working!' in out)
-        self.assertTrue('PASSED  test_tc' in out)
+        self.assertTrue('PASSED  work.test_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
 
     def test_default_timeout_too_short(self):
@@ -105,7 +105,7 @@ class TestGhdlSimple(TestCase):
         code, out, err = run_vhdeps('ghdl', '-i', DIR+'/simple/default-timeout-too-short')
         self.assertEqual(code, 1)
         self.assertTrue('Warning: no simulation timeout specified for work.test_tc' in err)
-        self.assertTrue('TIMEOUT test_tc' in out)
+        self.assertTrue('TIMEOUT work.test_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
 class TestGhdlSpecific(TestCase):
@@ -140,7 +140,7 @@ class TestGhdlSpecific(TestCase):
             code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/all-good')
         self.assertEqual(code, 1)
         self.assertTrue('dummy ghdl: error' in out)
-        self.assertTrue('ERROR   test_tc' in out)
+        self.assertTrue('ERROR   work.test_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
     def test_no_wc(self):
@@ -234,8 +234,8 @@ class TestGhdlSpecific(TestCase):
         self.assertEqual(code, 1)
         self.assertTrue('working!' in out)
         self.assertTrue('uh oh!' in out)
-        self.assertTrue('FAILED  fail_tc' in out)
-        self.assertTrue('PASSED  pass_tc' in out)
+        self.assertTrue('FAILED  work.fail_tc' in out)
+        self.assertTrue('PASSED  work.pass_tc' in out)
         self.assertTrue('Test suite FAILED' in out)
 
     @skipIf(not ghdl_installed(), 'missing ghdl')
@@ -244,8 +244,8 @@ class TestGhdlSpecific(TestCase):
         code, out, _ = run_vhdeps('ghdl', '-i', DIR+'/simple/multiple-ok', '-j')
         self.assertEqual(code, 0)
         self.assertTrue('working!' in out)
-        self.assertTrue('PASSED  foo_tc' in out)
-        self.assertTrue('PASSED  bar_tc' in out)
+        self.assertTrue('PASSED  work.foo_tc' in out)
+        self.assertTrue('PASSED  work.bar_tc' in out)
         self.assertTrue('Test suite PASSED' in out)
 
     @skipIf(not ghdl_installed(), 'missing ghdl')
