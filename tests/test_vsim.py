@@ -139,7 +139,7 @@ class TestVsimMocked(TestCase):
         self.assertEqual(code, 0)
         self.assertTrue('add_source {' + DIR + '/simple/all-good/test_tc.vhd} '
                         '{work} {-quiet -2008}' in out)
-        self.assertTrue('add_test work test_tc "' + DIR + '/simple/all-good" "1 ms"')
+        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/simple/all-good}')
 
     def test_tcl_multi(self):
         """Test TCL output for a test suite to stdout"""
@@ -149,8 +149,8 @@ class TestVsimMocked(TestCase):
                         '{work} {-quiet -2008}' in out)
         self.assertTrue('add_source {' + DIR + '/simple/multi-version/foo_tc.93.vhd} '
                         '{work} {-quiet -93}' in out)
-        self.assertTrue('add_test work bar_tc "' + DIR + '/simple/multi-version" "1 ms"')
-        self.assertTrue('add_test work foo_tc "' + DIR + '/simple/multi-version" "1 ms"')
+        self.assertTrue('add_test {work} {bar_tc} {' + DIR + '/simple/multi-version}')
+        self.assertTrue('add_test {work} {foo_tc} {' + DIR + '/simple/multi-version}')
 
     def test_tcl_versions(self):
         """Test TCL output for a test suite with mixed VHDL versions to
@@ -165,7 +165,7 @@ class TestVsimMocked(TestCase):
                         '{work} {-quiet -2002}' in out)
         self.assertTrue('add_source {' + DIR + '/vsim/supported-versions/test_tc.08.vhd} '
                         '{work} {-quiet -2008}' in out)
-        self.assertTrue('add_test work test_tc "' + DIR + '/vsim/supported-versions" "1 ms"')
+        self.assertTrue('add_test {work} {test_tc} {' + DIR + '/vsim/supported-versions}')
 
     def test_tcl_to_file(self):
         """Test TCL output to a file"""
@@ -247,4 +247,4 @@ class TestVsimMocked(TestCase):
                     self.assertEqual(code, 0)
                     self.assertTrue('executing from stdin' in out)
                     with open(tempdir + '/vsim.log', 'r') as log_fildes:
-                        self.assertTrue('add_test work test_tc' in log_fildes.read())
+                        self.assertTrue('add_test {work} {test_tc}' in log_fildes.read())
