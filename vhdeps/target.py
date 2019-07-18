@@ -50,7 +50,8 @@ def get_argument_parser(name):
     mod = get_target(name)
     parser = argparse.ArgumentParser(
         prog='vhdeps %s' % name,
-        description=mod.__doc__)
+        description=mod.__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter)
     if hasattr(mod, 'add_arguments'):
         mod.add_arguments(parser)
     return parser
