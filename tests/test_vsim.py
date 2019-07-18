@@ -130,6 +130,16 @@ class TestVsimReal(TestCase):
         self.assertFalse('modelsim.ini' in os.listdir(DIR+'/simple/partial-failure'))
         self.assertFalse('vsim.wlf' in os.listdir(DIR+'/simple/partial-failure'))
 
+    def test_workdir(self):
+        """Test the workdir for the test case for GHDL"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            local['cp'](DIR+'/complex/file-io/test_tc.vhd', tempdir)
+            with local.cwd(tempdir):
+                code, _, _ = run_vhdeps('vsim')
+            self.assertEqual(code, 0)
+            self.assertEqual(sorted(os.listdir(tempdir)), ['output_file.txt', 'test_tc.vhd'])
+
+
 class TestVsimMocked(TestCase):
     """Tests the vsim backend without calling a real vsim."""
 
