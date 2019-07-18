@@ -175,6 +175,16 @@ class TestGhdlSpecific(TestCase):
             self.assertTrue('work-obj08.cf' in os.listdir(tempdir))
 
     @skipIf(not ghdl_installed(), 'missing ghdl')
+    def test_workdir(self):
+        """Test the workdir for the test case for GHDL"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            local['cp'](DIR+'/complex/file-io/test_tc.vhd', tempdir)
+            with local.cwd(tempdir):
+                code, _, _ = run_vhdeps('ghdl')
+            self.assertEqual(code, 0)
+            self.assertEqual(sorted(os.listdir(tempdir)), ['output_file.txt', 'test_tc.vhd'])
+
+    @skipIf(not ghdl_installed(), 'missing ghdl')
     def test_vcd_dir(self):
         """Test VCD output with GHDL"""
         with tempfile.TemporaryDirectory() as tempdir:
@@ -270,6 +280,31 @@ class TestGhdlSpecific(TestCase):
         self.assertTrue(bool(re.search(r'ghdl -e [^\n]* e la bo rate', out)))
         self.assertTrue(bool(re.search(r'ghdl -r [^\n]* run', out)))
         self.assertTrue(bool(re.search(r'ghdl -r [^\n]* -Wx,a,b,c', out)))
+
+    @skipIf(
+        not coverage_supported(),
+        'missing gcov, lcov, genhtml, or lcov_cobertura, or ghdl with gcc backend')
+    def test_file_conflict(self):
+        """Test a filename/symlink conflict in the GHDL backend"""
+        code, _, err = run_vhdeps('ghdl', '-i', DIR+'/ghdl/file-conflict-1')
+        self.assertEqual(code, 1)
+        print(err)
+        self.assertTrue('cannot create GHDL library symlink' in err)
+
+        code, _, err = run_vhdeps('ghdl', '-i', DIR+'/ghdl/file-conflict-2')
+        self.assertEqual(code, 1)
+        print(err)
+        self.assertTrue('cannot create GHDL library symlink' in err)
+
+    @skipIf(not ghdl_installed(), 'missing ghdl')
+    def test_run_from_workdir(self):
+        """Test running a GHDL test case from the working directory"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            local['cp'](DIR+'/simple/all-good/test_tc.vhd', tempdir)
+            with local.cwd(tempdir):
+                code, _, _ = run_vhdeps('ghdl', '--no-tempdir')
+            self.assertEqual(code, 0)
+            self.assertTrue('test_tc.vhd' in os.listdir(tempdir))
 
 
 @skipIf(

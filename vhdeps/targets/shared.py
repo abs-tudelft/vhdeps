@@ -60,15 +60,89 @@ def get_test_cases(vhd_list, pattern=None, **_):
                 test_cases.append(TestCase(top, unit))
     return test_cases
 
-def run_cmd(output_file, cmd, *args):
+def run_cmd(output_file, cmd, *args, workdir=None):
     """Runs the given plumbum-style command with the given arguments, sending
     the results to `output_file` (and stderr if `output_file` is `sys.stdout`).
     Returns a three-tuple of the exit code, stdout as a string, and stderr as a
     string."""
+    if workdir is None:
+        from plumbum import local
+        workdir = str(local.cwd)
+
     if output_file == sys.stdout:
-        from plumbum.commands.modifiers import _TEE
-        exit_code, stdout, stderr = cmd[args] & _TEE(retcode=None)
+        from subprocess import PIPE
+        from select import select
+        from plumbum.commands.modifiers import ExecutionModifier
+        from plumbum.lib import read_fd_decode_safely
+
+        class TeeWithDir(ExecutionModifier):
+            """Like plumbum._TEE, but with a custom working directory for the
+            child process."""
+            #pylint: disable=R0903
+
+            __slots__ = ('workdir',)
+
+            def __init__(self, workdir):
+                """`workdir` is the working directory in which the command
+                should run."""
+                super().__init__()
+                self.workdir = workdir
+
+            def __rand__(self, cmd):
+                with cmd.bgrun(
+                        retcode=None,
+                        stdin=None,
+                        stdout=PIPE,
+                        stderr=PIPE,
+                        cwd=self.workdir) as process:
+                    outbuf = []
+                    errbuf = []
+                    out = process.stdout
+                    err = process.stderr
+                    buffers = {out: outbuf, err: errbuf}
+                    tee_to = {out: sys.stdout, err: sys.stderr}
+                    done = False
+                    while not done:
+                        # After the process exits, we have to do one more
+                        # round of reading in order to drain any data in the
+                        # pipe buffer. Thus, we check poll() here,
+                        # unconditionally enter the read loop, and only then
+                        # break out of the outer loop if the process has
+                        # exited.
+                        done = (process.poll() is not None)
+
+                        # We continue this loop until we've done a full
+                        # `select()` call without collecting any input. This
+                        # ensures that our final pass -- after process exit --
+                        # actually drains the pipe buffers, even if it takes
+                        # multiple calls to read().
+                        progress = True
+                        while progress:
+                            progress = False
+                            ready, _, _ = select((out, err), (), ())
+                            for fildes in ready:
+                                buf = buffers[fildes]
+                                data, text = read_fd_decode_safely(fildes, 4096)
+                                if not data:  # eof
+                                    continue
+                                progress = True
+
+                                # Python conveniently line-buffers stdout and
+                                # stderr for us, so all we need to do is write
+                                # to them.
+
+                                # This will automatically add up to three bytes
+                                # if it cannot be decoded.
+                                tee_to[fildes].write(text)
+
+                                buf.append(data)
+
+                    stdout = ''.join([x.decode('utf-8') for x in outbuf])
+                    stderr = ''.join([x.decode('utf-8') for x in errbuf])
+                    return process.returncode, stdout, stderr
+
+        exit_code, stdout, stderr = cmd[args] & TeeWithDir(workdir)
     else:
-        exit_code, stdout, stderr = cmd[args].run(retcode=None)
+        exit_code, stdout, stderr = cmd[args].run(retcode=None, cwd=workdir)
         output_file.write(stdout + stderr)
     return exit_code, stdout, stderr

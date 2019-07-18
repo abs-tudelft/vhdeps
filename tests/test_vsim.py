@@ -45,13 +45,13 @@ class TestVsimReal(TestCase):
         self.assertNotEqual(code, 0)
 
     def test_error(self):
-        """Test running vsim on a single test case that failes to
+        """Test running vsim on a single test case that fails to
         elaborate"""
         code, _, _ = run_vhdeps('vsim', '-i', DIR+'/simple/elab-error')
         self.assertNotEqual(code, 0)
 
     def parse_error(self):
-        """Test running vsim on a single test case that failes to compile"""
+        """Test running vsim on a single test case that fails to compile"""
         code, _, _ = run_vhdeps('vsim', '-i', DIR+'/simple/parse-error')
         self.assertNotEqual(code, 0)
 
@@ -87,6 +87,16 @@ class TestVsimReal(TestCase):
         self.assertTrue('FAILED work.fail_tc' in out)
         self.assertTrue('PASSED work.pass_tc' in out)
         self.assertTrue('1/2 test(s) passed' in out)
+
+    def test_workdir(self):
+        """Test the workdir for the test case for GHDL"""
+        with tempfile.TemporaryDirectory() as tempdir:
+            local['cp'](DIR+'/complex/file-io/test_tc.vhd', tempdir)
+            with local.cwd(tempdir):
+                code, _, _ = run_vhdeps('vsim')
+            self.assertEqual(code, 0)
+            self.assertEqual(sorted(os.listdir(tempdir)), ['output_file.txt', 'test_tc.vhd'])
+
 
 class TestVsimMocked(TestCase):
     """Tests the vsim backend without calling a real vsim."""
