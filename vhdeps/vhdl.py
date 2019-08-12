@@ -52,7 +52,7 @@ class VhdFile:
     COMPONENT_DEF = re.compile(
         r'component\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     COMPONENT_USE = re.compile(
-        r':\s*([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))')
+        r':\s*(?:component\s+)?([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))\s+map')
     PACKAGE_DEF = re.compile(
         r'package\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     PACKAGE_USE = re.compile(
