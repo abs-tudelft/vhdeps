@@ -244,7 +244,16 @@ class TestDump(TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(out, '\n'.join([
             'dep work 2008 ' + DIR + '/complex/component-circle/a.vhd',
-            'top work 2008 ' + DIR + '/complex/component-circle/b.vhd',
+            'dep work 2008 ' + DIR + '/complex/component-circle/b.vhd',
+        ]) + '\n')
+
+    def test_component_in_inst(self):
+        """Test component keyword in instantiation"""
+        code, out, _ = run_vhdeps('dump', '-i', DIR + '/complex/component-in-inst')
+        self.assertEqual(code, 0)
+        self.assertEqual(out, '\n'.join([
+            'top work 2008 ' + DIR + '/complex/component-in-inst/a.vhd',
+            'dep work 2008 ' + DIR + '/complex/component-in-inst/b.vhd',
         ]) + '\n')
 
     def test_entity_circle(self):
