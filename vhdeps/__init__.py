@@ -19,6 +19,7 @@ more script-friendly interface, use the `vhdeps.vhdl' submodule directly."""
 
 import sys
 import os
+import glob
 import argparse
 import vhdeps.vhdl as vhdl
 import vhdeps.target as target_mod
@@ -64,11 +65,15 @@ def run_cli(args=None):
     parser.add_argument(
         '-i', '--include', metavar='{{version:}lib:}path',
         action='append', default=[],
-        help='Recursively includes (paths containing) arbitrary VHDL files. If '
-        'lib is specified, it marks that files must be compiled into the '
-        'specified library name instead of the default (work). If version is '
-        'specified, all files in the directory are assumed to have the given '
-        'VHDL version, regardless of version tags in the filenames.')
+        help='Includes VHDL files for dependency analysis. If the path is a '
+        'directory, it is scanned recursively; if it is a file, only that '
+        'file is added. If the path contains * or ?, it is instead treated as '
+        'a non-recursive file glob, so \'<path>/*.vhd\' can be used to '
+        'include a directory non-recursively. If lib is specified, it marks '
+        'that files must be compiled into the specified library name instead '
+        'of the default (work). If version is specified, all files in the '
+        'directory are assumed to have the given VHDL version, regardless of '
+        'version tags in the filenames.')
 
     parser.add_argument(
         '-I', '--strict', metavar='{{version:}lib:}path',
@@ -198,10 +203,16 @@ def run_cli(args=None):
                 fname = arg[-1]
                 lib = arg[-2] if len(arg) >= 2 else 'work'
                 override_version = int(arg[-3]) if len(arg) >= 3 else None
-                if os.path.isdir(fname):
-                    vhd_list.add_dir(fname, lib=lib, override_version=override_version, **kwargs)
+                if '*' in fname or '?' in fname:
+                    for match in glob.glob(fname):
+                        vhd_list.add_file(
+                            match, lib=lib, override_version=override_version, **kwargs)
+                elif os.path.isdir(fname):
+                    vhd_list.add_dir(
+                        fname, lib=lib, override_version=override_version, **kwargs)
                 elif os.path.isfile(fname):
-                    vhd_list.add_file(fname, lib=lib, override_version=override_version, **kwargs)
+                    vhd_list.add_file(
+                        fname, lib=lib, override_version=override_version, **kwargs)
                 else:
                     raise ValueError('file/directory not found: "%s"' % fname)
 

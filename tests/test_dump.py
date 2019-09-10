@@ -62,6 +62,17 @@ class TestDump(TestCase):
             'top work 2008 ' + DIR + '/simple/all-good/test_tc.vhd',
         ]) + '\n')
 
+    def test_default_include_by_glob(self):
+        """Test including files using glob syntax"""
+        code, out, _ = run_vhdeps(
+            'dump',
+            '-i', DIR + '/simple/multiple-ok/ba*.vhd')
+        self.assertEqual(code, 0)
+        self.assertEqual(out, '\n'.join([
+            'top work 2008 ' + DIR + '/simple/multiple-ok/bar_tc.vhd',
+            'top work 2008 ' + DIR + '/simple/multiple-ok/baz.vhd',
+        ]) + '\n')
+
     def test_default_filters(self):
         """Test the default version/mode filters"""
         code, out, _ = run_vhdeps('dump', '-i', DIR + '/simple/filtering')
