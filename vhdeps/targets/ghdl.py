@@ -164,6 +164,8 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False,
             else:
                 raise ValueError('invalid value for -W')
 
+    print(ghdl_run)
+
     return ghdl_analyze, ghdl_elaborate, ghdl_run
 
 def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
