@@ -162,7 +162,7 @@ class TestDump(TestCase):
 
     def test_ignore_pragmas(self):
         """Test ignore-use pragmas"""
-        code, _, err = run_vhdeps('dump', '-i', DIR + '/complex/ignore-use')
+        code, _, _ = run_vhdeps('dump', '-i', DIR + '/complex/ignore-use')
         self.assertEqual(code, 0)
 
     def test_missing_package(self):
