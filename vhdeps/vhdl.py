@@ -50,19 +50,19 @@ class VhdFile:
         r':\s*entity\s+(([a-zA-Z][a-zA-Z0-9_]*)\.)?'
         r'([a-zA-Z][a-zA-Z0-9_]*)\s*[(\sport)|(\sgeneric)|;]')
     ENTITY_IGNORE = re.compile(
-        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+entity\s+([a-zA-Z0-9_\.])')
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+entity\s+([a-zA-Z0-9_\.]+)')
     COMPONENT_DEF = re.compile(
         r'component\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     COMPONENT_USE = re.compile(
         r':\s*(?:component\s+)?([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))\s+map')
     COMPONENT_IGNORE = re.compile(
-        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+component\s+([a-zA-Z0-9_\.])')
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+component\s+([a-zA-Z0-9_\.]+)')
     PACKAGE_DEF = re.compile(
         r'package\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     PACKAGE_USE = re.compile(
         r'use\s+([a-zA-Z][a-zA-Z0-9_]*)\.([a-zA-Z][a-zA-Z0-9_]*)')
     PACKAGE_IGNORE = re.compile(
-        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+package\s+([a-zA-Z0-9_\.])')
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+package\s+([a-zA-Z0-9_\.]+)')
     TIMEOUT = re.compile(
         r'\-\-\s*pragma\s+simulation\s+timeout\s+([0-9]+(?:\.[0-9]*)?\s+[pnum]?s)')
 
