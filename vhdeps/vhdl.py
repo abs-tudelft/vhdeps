@@ -49,14 +49,20 @@ class VhdFile:
     ENTITY_USE = re.compile(
         r':\s*entity\s+(([a-zA-Z][a-zA-Z0-9_]*)\.)?'
         r'([a-zA-Z][a-zA-Z0-9_]*)\s*[(\sport)|(\sgeneric)|;]')
+    ENTITY_IGNORE = re.compile(
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+entity\s+([a-zA-Z0-9_\.])')
     COMPONENT_DEF = re.compile(
         r'component\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     COMPONENT_USE = re.compile(
         r':\s*(?:component\s+)?([a-zA-Z][a-zA-Z0-9_]*)\s*((\sport)|(\sgeneric))\s+map')
+    COMPONENT_IGNORE = re.compile(
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+component\s+([a-zA-Z0-9_\.])')
     PACKAGE_DEF = re.compile(
         r'package\s+([a-zA-Z][a-zA-Z0-9_]*)\s+is')
     PACKAGE_USE = re.compile(
         r'use\s+([a-zA-Z][a-zA-Z0-9_]*)\.([a-zA-Z][a-zA-Z0-9_]*)')
+    PACKAGE_IGNORE = re.compile(
+        r'\-\-\s*pragma\s+vhdeps\s+ignore\s+package\s+([a-zA-Z0-9_\.])')
     TIMEOUT = re.compile(
         r'\-\-\s*pragma\s+simulation\s+timeout\s+([0-9]+(?:\.[0-9]*)?\s+[pnum]?s)')
 
@@ -108,6 +114,17 @@ class VhdFile:
         except Exception as exc:
             raise RuntimeError('failed to read VHDL file at %s: %s' % (self.fname, exc))
         sim_timeout = [match.group(1)for match in self.TIMEOUT.finditer(contents)]
+
+        entity_ignore = {
+            match.group(1)
+            for match in self.ENTITY_IGNORE.finditer(contents)}
+        component_ignore = {
+            match.group(1)
+            for match in self.COMPONENT_IGNORE.finditer(contents)}
+        package_ignore = {
+            match.group(1)
+            for match in self.PACKAGE_IGNORE.finditer(contents)}
+
         contents = ' '.join((line.split('--')[0] for line in contents.split('\n')))
 
         self.entity_defs = sorted({
@@ -115,19 +132,22 @@ class VhdFile:
             for match in self.ENTITY_DEF.finditer(contents)})
         self.entity_uses = sorted({
             (match.group(2), match.group(3))
-            for match in self.ENTITY_USE.finditer(contents)})
+            for match in self.ENTITY_USE.finditer(contents)
+            if match.group(3) not in entity_ignore})
         self.component_defs = sorted({
             match.group(1)
             for match in self.COMPONENT_DEF.finditer(contents)})
         self.component_uses = sorted({
             match.group(1)
-            for match in self.COMPONENT_USE.finditer(contents)})
+            for match in self.COMPONENT_USE.finditer(contents)
+            if match.group(1) not in component_ignore})
         self.package_defs = sorted({
             match.group(1)
             for match in self.PACKAGE_DEF.finditer(contents)})
         self.package_uses = sorted({
             (match.group(1), match.group(2))
-            for match in self.PACKAGE_USE.finditer(contents)})
+            for match in self.PACKAGE_USE.finditer(contents)
+            if match.group(2) not in package_ignore})
 
         # If this file contains a single entity or package, record its name.
         if len(self.entity_defs) + len(self.package_defs) != 1:
