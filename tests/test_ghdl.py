@@ -22,8 +22,8 @@ def coverage_supported():
     """Returns whether all the dependencies for producing code coverage with
     GHDL are met."""
     try:
-        from plumbum.cmd import ghdl, gcov, lcov, genhtml #pylint: disable=W0611
-        import lcov_cobertura #pylint: disable=W0611
+        from plumbum.cmd import ghdl, gcov, lcov, genhtml #pylint: disable=W0611,C0415
+        import lcov_cobertura #pylint: disable=W0611,C0415
         return 'GCC back-end' in ghdl('--version')
     except ImportError:
         return False

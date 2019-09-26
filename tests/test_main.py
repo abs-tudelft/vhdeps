@@ -38,28 +38,28 @@ class TestMain(TestCase):
 
     def test_no_args_main(self):
         """Test `vhdeps` without arguments (exit code 1)"""
-        import vhdeps
+        import vhdeps #pylint: disable=C0415
         code, _, err = run_vhdeps_main(vhdeps)
         self.assertEqual(code, 1)
         self.assertTrue('Error: no target specified.' in err)
 
     def test_help_main(self):
         """Test `vhdeps` with the --help argument (exit code 0)"""
-        import vhdeps
+        import vhdeps #pylint: disable=C0415
         code, out, _ = run_vhdeps_main(vhdeps, '--help')
         self.assertEqual(code, 0)
         self.assertTrue('vhdeps <target> [entities...] [flags...] [--] [target-flags...]' in out)
 
     def test_no_args_module(self):
         """Test `vhdeps.__main__` without arguments (exit code 1)"""
-        import vhdeps.__main__ as mod
+        import vhdeps.__main__ as mod #pylint: disable=C0415
         code, _, err = run_vhdeps_main(mod)
         self.assertEqual(code, 1)
         self.assertTrue('Error: no target specified.' in err)
 
     def test_help_module(self):
         """Test `vhdeps.__main__` with the --help argument (exit code 0)"""
-        import vhdeps.__main__ as mod
+        import vhdeps.__main__ as mod #pylint: disable=C0415
         code, out, _ = run_vhdeps_main(mod, '--help')
         self.assertEqual(code, 0)
         self.assertTrue('vhdeps <target> [entities...] [flags...] [--] [target-flags...]' in out)
