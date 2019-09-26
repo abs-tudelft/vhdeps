@@ -160,6 +160,11 @@ class TestDump(TestCase):
         self.assertTrue('ResolutionError: entity work.test_tc is defined in '
                         'multiple, ambiguous files:' in err)
 
+    def test_ignore_pragmas(self):
+        """Test ignore-use pragmas"""
+        code, _, _ = run_vhdeps('dump', '-i', DIR + '/complex/ignore-use')
+        self.assertEqual(code, 0)
+
     def test_missing_package(self):
         """Test missing package detection/error"""
         code, _, err = run_vhdeps('dump', '-i', DIR + '/complex/vhlib/util/UtilMem64_pkg.vhd')
