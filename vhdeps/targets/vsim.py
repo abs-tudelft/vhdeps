@@ -205,8 +205,8 @@ proc add_signals_to_wave {
     foreach obj $vhd_list {
       # get leaf name
       set nam [lindex [split $obj /] end]
-      # change color
-      property wave $nam -color $color
+      # (try to) change color
+      catch { property wave $nam -color $color }
     }
   }
 
