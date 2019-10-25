@@ -984,10 +984,10 @@ def _write_tcl(vhd_list, tcl_file, suppress_warnings, extra_flags, **kwargs):
 def _run(vhd_list, output_file, gui=False, **kwargs):
     """Runs this backend in the current working directory."""
     try:
-        from plumbum.cmd import vsim
+        from plumbum.cmd import vsim #pylint: disable=C0415
     except ImportError:
         raise ImportError('no vsim-compatible simulator was found.')
-    from plumbum import local
+    from plumbum import local #pylint: disable=C0415
 
     # Write the TCL file to a temporary file.
     with open('vsim.do', 'w') as tcl_file:
@@ -1023,7 +1023,7 @@ def run(vhd_list, output_file, tcl=False, no_tempdir=False, **kwargs):
         return 0
 
     try:
-        from plumbum import local
+        from plumbum import local #pylint: disable=C0415
     except ImportError:
         raise ImportError('the vsim backend requires plumbum to be installed '
                           'to run vsim (pip3 install plumbum).')
