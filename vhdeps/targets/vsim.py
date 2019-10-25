@@ -267,10 +267,18 @@ proc run_test_by_id {index {run_to {}} {fast {}}} {
     # Give the command to initialize the simulation.
     eval "vsim $flags $lib.$unit"
 
-    # Enable or disable library warnings based on preferences.
-    set StdArithNoWarnings $suppress_warnings
-    set StdNumNoWarnings $suppress_warnings
-    set NumericStdNoWarnings $suppress_warnings
+    # Enable or disable library warnings based on preferences. Note: ModelSim
+    # is bugged to where it will except the value True for these variables, but
+    # they will only work when explicitly set to 1.
+    if {$suppress_warnings} {
+      set StdArithNoWarnings 1
+      set StdNumNoWarnings 1
+      set NumericStdNoWarnings 1
+    } else {
+      set StdArithNoWarnings 0
+      set StdNumNoWarnings 0
+      set NumericStdNoWarnings 0
+    }
 
     # Add signals to the waveform if we're not running in batch mode.
     if {![batch_mode] && !$fast} {
