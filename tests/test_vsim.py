@@ -11,7 +11,7 @@ DIR = os.path.realpath(os.path.dirname(__file__))
 def vsim_installed():
     """Returns whether vsim is installed."""
     try:
-        from plumbum.cmd import vsim #pylint: disable=W0611
+        from plumbum.cmd import vsim #pylint: disable=W0611,C0415
         return True
     except ImportError:
         return False

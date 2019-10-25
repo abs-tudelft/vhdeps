@@ -66,14 +66,14 @@ def run_cmd(output_file, cmd, *args, workdir=None):
     Returns a three-tuple of the exit code, stdout as a string, and stderr as a
     string."""
     if workdir is None:
-        from plumbum import local
+        from plumbum import local #pylint: disable=C0415
         workdir = str(local.cwd)
 
     if output_file == sys.stdout:
-        from subprocess import PIPE
-        from select import select
-        from plumbum.commands.modifiers import ExecutionModifier
-        from plumbum.lib import read_fd_decode_safely
+        from subprocess import PIPE #pylint: disable=C0415
+        from select import select #pylint: disable=C0415
+        from plumbum.commands.modifiers import ExecutionModifier #pylint: disable=C0415
+        from plumbum.lib import read_fd_decode_safely #pylint: disable=C0415
 
         class TeeWithDir(ExecutionModifier):
             """Like plumbum._TEE, but with a custom working directory for the
