@@ -13,7 +13,7 @@ DIR = os.path.realpath(os.path.dirname(__file__))
 def ghdl_installed():
     """Returns whether GHDL is installed."""
     try:
-        from plumbum.cmd import ghdl #pylint: disable=W0611
+        from plumbum.cmd import ghdl #pylint: disable=W0611,C0415
         return True
     except ImportError:
         return False

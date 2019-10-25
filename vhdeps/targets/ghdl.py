@@ -102,7 +102,7 @@ def _get_ghdl_cmds(vhd_list, ieee='synopsys', no_debug=False,
 
     # Look for the base GHDL executable.
     try:
-        from plumbum.cmd import ghdl
+        from plumbum.cmd import ghdl #pylint: disable=C0415
     except ImportError:
         raise ImportError('ghdl was not found.')
 
@@ -239,7 +239,7 @@ def _run_test_case(output_file, test_case, vcd_dir, ghdl_elaborate, ghdl_run):
 def _run(vhd_list, output_file, jobs=None, coverage=None,
          cover_dir=None, vcd_dir=None, gui=False, **kwargs):
     """Runs this backend in the current working directory."""
-    from plumbum import local, FG
+    from plumbum import local, FG #pylint: disable=C0415
 
     # Construct the plumbum command representations of the three GHDL commands
     # we need, complete with all flags that are not file-dependent.
@@ -419,7 +419,7 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
 
         elif coverage == 'xml':
             try:
-                from lcov_cobertura import LcovCobertura
+                from lcov_cobertura import LcovCobertura #pylint: disable=C0415
             except ImportError:
                 raise ImportError('the GHDL backend requires lcov_cobertura to '
                                   'generate Cobertura XML coverage data '
@@ -453,7 +453,7 @@ def _run(vhd_list, output_file, jobs=None, coverage=None,
 def run(vhd_list, output_file, no_tempdir=False, cover_dir=None, vcd_dir=None, **kwargs):
     """Runs this backend."""
     try:
-        from plumbum import local
+        from plumbum import local #pylint: disable=C0415
     except ImportError:
         raise ImportError('the GHDL backend requires plumbum to be installed '
                           '(pip3 install plumbum).')
