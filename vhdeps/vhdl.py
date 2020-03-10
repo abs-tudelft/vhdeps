@@ -299,7 +299,7 @@ class VhdFile:
 class VhdList:
     """Represents a list of all VHDL files available for compilation."""
 
-    def __init__(self, mode='sim', desired_version=None, required_version=None):
+    def __init__(self, mode='sim', desired_version=None, required_version=None, ignore_libs=None):
         """Constructs a VHDL file list. `simulation` specifies whether we're
         compiling for simulation or synthesis. `version` specifies the maximum
         supported VHDL version of the target."""
@@ -312,6 +312,7 @@ class VhdList:
             self.desired_version = _parse_version(desired_version)
         else:
             self.desired_version = self.required_version
+        self._ignore_libs = ignore_libs
         self.files = set()
         self.design_units = {}
         self.order = deque()
@@ -420,7 +421,7 @@ class VhdList:
             self.design_units[ident] = vhd
 
             # Resolve this file's dependencies recursively.
-            vhd.resolve_dependencies(self._resolve_design_unit)
+            vhd.resolve_dependencies(self._resolve_design_unit, self._ignore_libs)
 
         return vhd
 
