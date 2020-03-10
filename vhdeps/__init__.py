@@ -118,6 +118,12 @@ def run_cli(args=None):
         'considered simulation-only, if it matches *.syn.* it is considered '
         'synthesis-only. Specify -m all to disable this filter.')
 
+    parser.add_argument(
+        '-V', '--vendorlib', metavar='lib',
+        action='append', default=[],
+        help='Specifies that any references to the given library are to be '
+        'ignored. IEEE and STD are added by default.')
+
     # Output control.
     parser.add_argument(
         '-o', '--outfile',
@@ -189,11 +195,17 @@ def run_cli(args=None):
     except SystemExit as exc:
         return exc.code
 
+    # Figure out which libraries to ignore.
+    ignore_libs = {'ieee', 'std'}
+    for lib in args.vendorlib:
+        ignore_libs.add(lib)
+
     # Construct the list of VHDL files.
     vhd_list = vhdl.VhdList(
         mode=args.mode,
         desired_version=args.desired_version,
-        required_version=args.version)
+        required_version=args.version,
+        ignore_libs=ignore_libs)
 
     try:
         # Add the specified files/directories to the VHDL file list.
